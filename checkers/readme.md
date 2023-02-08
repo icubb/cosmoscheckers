@@ -4578,6 +4578,165 @@ https://tutorials.cosmos.network/hands-on-exercise/2-ignite-cli-adv/5-payment-wi
 up to here...
 
 
+Prepare mocks
+
+It is better to create some mocks (opens new window). The Cosmos SDK does not offer mocks of its objects so you have to create your own. For that, the gomock (opens new window) library is a good resource. Install it:
+
+Copy ENV MOCKGEN_VERSION=1.6.0
+...
+RUN go install github.com/golang/mock/mockgen@v${MOCKGEN_VERSION}
+Dockerfile-ubuntu
+View source
+
+Rebuild your Docker image.
+
+With the library installed, you still need to do a one time creation of the mocks. Run:
+
+Copy $ mockgen -source=x/checkers/types/expected_keepers.go \
+    -package testutil \
+    -destination=x/checkers/testutil/expected_keepers_mocks.go 
+
+If your expected keepers change, you will have to run this command again. It can be a good idea to save the command for future reference. You may use a Makefile for that. Ensure you install the make tool for your computer. If you use Docker, add it to the packages and rebuild the image:
+Copy ENV PACKAGES curl gcc jq make
+Dockerfile-ubuntu
+View source
+
+Create the Makefile:
+Copy mock-expected-keepers:
+    mockgen -source=x/checkers/types/expected_keepers.go \
+        -package testutil \
+        -destination=x/checkers/testutil/expected_keepers_mocks.go 
+Makefile
+View source
+
+At any time, you can rebuild the mocks with:
+
+Copy $ make mock-expected-keepers
+
+
+- You are going to set the expectations on this `BankEscrowKeeper` mock many times, including when you do not care about the result. So instead of  mindlessly setting the expectations in every test, it is in your interest to create helper functions that will make setting up th expectations more efficient.
+
+- Create a new `bank_escrow_helpers.go` file with:
+
+
+```
+func (escrow *MockBankEscrowKeeper) ExpectAny(context context.Context) {
+    escrow.EXPECT().SendCoinsFromAccountToModule(sdk.UnwrapSDKContext(context), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+    escrow.EXPECT().SendCoinsFromModuleToAccount(sdk.UnwrapSDKContext(context), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+}
+
+func coinsOf(amount uint64) sdk.Coins {
+    return sdk.Coins{
+        sdk.Coin{
+            Denom:  sdk.DefaultBondDenom,
+            Amount: sdk.NewInt(int64(amount)),
+        },
+    }
+}
+
+func (escrow *MockBankEscrowKeeper) ExpectPay(context context.Context, who string, amount uint64) *gomock.Call {
+    whoAddr, err := sdk.AccAddressFromBech32(who)
+    if err != nil {
+        panic(err)
+    }
+    return escrow.EXPECT().SendCoinsFromAccountToModule(sdk.UnwrapSDKContext(context), whoAddr, types.ModuleName, coinsOf(amount))
+}
+
+func (escrow *MockBankEscrowKeeper) ExpectRefund(context context.Context, who string, amount uint64) *gomock.Call {
+    whoAddr, err := sdk.AccAddressFromBech32(who)
+    if err != nil {
+        panic(err)
+    }
+    return escrow.EXPECT().SendCoinsFromModuleToAccount(sdk.UnwrapSDKContext(context), types.ModuleName, whoAddr, coinsOf(amount))
+}
+```
+
+
+**Make use of mocks** 
+
+- With the helpers in place, you can add a new function similar to `CheckersKeeper(t testing.TB)` but which uses mocks. Keep the original function, which passes a `nil` for bank.
+
+```
+func CheckersKeeper(t testing.TB) (*keeper.Keeper, sdk.Context) {
+    return CheckersKeeperWithMocks(t, nil)
+}
+
+func CheckersKeeperWithMocks(t testing.TB, bank *testutil.MockBankEscrowKeeper) (*keeper.Keeper, sdk.Context) {
+    storeKey := sdk.NewKVStoreKey(types.StoreKey)
+    memStoreKey := storetypes.NewMemoryStoreKey(types.MemStoreKey)
+
+    db := tmdb.NewMemDB()
+
+    stateStore := store.NewCommitWithMultiStore(db)
+    stateStore.MountStoreWithDB(storeKey, sdk.StoreTypeIAVL, db)
+    stateStore.MountStoreWithDB(memStoreKey, sdk.StoreTypeMemory, nil)
+    require.NoError(t, stateStore.LoadLatestVersion())
+
+    registry := codectypes.NewInterfaceRegistry()
+    cdc := codec.NewProtoCodec(registry)
+
+    paramsSubspace := typesparams.NewSubspac(cdc,
+        types.Amino,
+        storeKey,
+        memStoreKey,
+        "CheckersParams",
+    )
+    k := keeper.NewKeeper(
+        bank,
+        cdc,
+        storeKey,
+        memStoreKey,
+        paramsSubspace,
+    )
+
+    ctx := sdk.NewContex(stateStore, tmproto.Header{}, false, log.NewNopLogger())
+
+    // Initialize params
+    k.SetParams(ctx, types.DefaultParams())
+
+    return k, ctx
+}
+```
+
+okay so it's like you create the mocks to simulate the bank functions like send to module and take from modle kind of deal..
+
+**Technical Details**
+
+- Mock objects have the same interface as the real objects they mimic, allowing a client to remain unaware of whether it is using a real object or a mock object. Many available mock object frameworks allow the programmer to spcify which, and in what order, methods will be invoked on a mock object and what parameters will be passd to them, as well as what values will be returned. Thus, the behaviour of a complex object such as a network socket can be mimicked by a mock object, allowing the programmer to discover whether the object being tested responds appropriately to the wide variety of states such mock objects may be in.
+
+- With the helpers in place, you can add a new function similar to `CheckersKeeper(t testing.TB)` but which uses mocks. Keep the original function, which passes a `nil` for bank.
+
+- The `CheckersKeeperWithMocks` function takes the mock in its arguments for more versatility.
+
+- Now adjust the small functions that set up the keper before each test. You do not need to change them for the *create* tests because they never call the bank. You do have to do it for *play*, *reject*, and *forfeit*.
+
+```
+func setupMsgServerWithOneGameForPlayMove(t testing.TB) (types.MsgServer, keeper.Keeper, context.Context, *gomock.Controller, *testutil.MockBankEscrowKeeper) {
+    ctrl := gomock.NewController(t)
+    bankMock := testutil.NewMockBankEscrowKeeper(ctrl)
+    k, ctx := keepertest.CheckersKeeperWithMocks(t, bankMock)
+    checkers.InitGenesis(ctx, *k, *types.DefaultGenesis())
+    server := keeper.NewMsgServerImpl(*k)
+    context := sdk.WrapSDKContext(ctx)
+    server.CreateGame(context, &types.MsgCreateGame{
+        Creator: alice,
+        Black:   bob,
+        Red:     carol,
+        Wager:   45,
+    })
+    return server, *k, context, ctrl, bankMock
+}
+```
+
+- This function creates the mock and returns two new objects:
+    
+    - The mock controller, so that the `.Finish()` method can be called within the test itself. This is the function that will verify the call expectations placed on the mocks.
+
+    - The mocked bank escrow. This is the instance on which you place the call expectations.
+
+- Both objects will be used from the test proper.
+
+- Do the same for *reject*. If you forfeit unit tests do not use `setupMsgServerWithOneGameForPlayMove`, then you should also create one such function the *forfeit* tests.
 
 
 
@@ -4591,6 +4750,56 @@ up to here...
 
 
 
+
+
+
+
+
+
+
+
+
+
+--------------------------------
+
+Cosmos SDK testing
+
+- **Testing**
+- The Cosmos SDK Contains different types of tests. These tests have different goals and are used at different stages of the development cycle. We advice, as a general rule, to use tests at all stages of the development cycle. It is adviced, as a chain developer, to test your application and modules in a similar way than the SDK.
+
+
+- **Unit Tests**
+- Unit tests are the lowest category of the test pyramid. All packages and modules should have unit test coverage. Modules should have their dependencies mocked: this means mocking keepers.
+
+- The SDK uses `mockgen` to generate mocks for keepers:
+
+```
+mockgen_cmd="mockgen"
+$mockgen_cmd -source=client/account_retriever.go -package mock -destination testutil/mock/account_retriever.go
+$mockgen_cmd -package mock -destination testutil/mock/tendermint_tm_db_DB.go github.com/tendermint/tm-db DB
+$mockgen_cmd -source=types/module/module.go -package mock -destination testutil/mock/types_module_module.go
+```
+
+- You can read more about mockgen here.
+
+**Example**
+
+- As an example, we will walkthrough the keeper tests of the `x/gov` module.
+
+- The `x/gov` module has a `Keeper` type requires a few external dependencies (i.e. imports outside `x/gov` to work properly)
+
+`x/gov/keeper/keeper.go`
+
+```
+func NewKeeper(
+    cdc codec.BinaryCodec, key stortypes.StoreKey, authKeeper types.AccountKeeper, bankKeeper types.BankKeeper, sk types.StakingKeeper,
+    router *baseapp.MsgServiceRouter, config types.Config, authority string,
+) *Keeper {}
+```
+
+- In order to only test `x/gov`, we mock the expected keepers and instantiate the `Keeper` with the mocked dependencies. Note that we may need to configure the mocked dependencies to return the expected values:
+
+`x/gov/keeper/common_test.go`
 
 
 

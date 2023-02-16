@@ -12,8 +12,8 @@ type GameMoveTest struct {
 	player string
 	fromX  uint64
 	fromY  uint64
-	ToX    uint64
-	ToY    uint64
+	toX    uint64
+	toY    uint64
 }
 
 var (
@@ -69,7 +69,7 @@ func GetPlayer(color string) string {
 	return Carol
 }
 
-func PlayAllMoves(t *testing.T, msgServer, context context.Context, gameIndex string, moves []GameMoveTest) {
+func PlayAllMoves(t *testing.T, msgServer types.MsgServer, context context.Context, gameIndex string, moves []GameMoveTest) {
 	for _, move := range Game1Moves {
 		_, err := msgServer.PlayMove(context, &types.MsgPlayMove{
 			Creator:   GetPlayer(move.player),

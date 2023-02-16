@@ -1,17 +1,33 @@
 package types_test
 
+import (
+	"testing"
+	"time"
+
+	"github.com/alice/checkers/rules"
+	"github.com/alice/checkers/x/checkers/testutil"
+	"github.com/alice/checkers/x/checkers/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/stretchr/testify/require"
+)
+
 const (
 	alice = testutil.Alice
 	bob   = testutil.Bob
 )
 
-func GetStoredGame1() *types.StoredGame {
+func GetStoredGame1() types.StoredGame {
 	return types.StoredGame{
-		Black: alice,
-		Red:   bob,
-		Index: "1",
-		Board: rules.New().String(),
-		Turn:  "b",
+		Black:       alice,
+		Red:         bob,
+		Index:       "1",
+		Board:       rules.New().String(),
+		Turn:        "b",
+		MoveCount:   0,
+		BeforeIndex: types.NoFifoIndex,
+		AfterIndex:  types.NoFifoIndex,
+		Deadline:    types.DeadlineLayout,
+		Winner:      rules.PieceStrings[rules.NO_PLAYER],
 	}
 }
 
@@ -85,10 +101,10 @@ func TestGetPlayerAddressRedCorrect(t *testing.T) {
 	require.Nil(t, err)
 }
 
-func TestGetPlayerAddressBlackIncorrect(t *testing.T) {
+func TestGetPlayerAddressRedIncorrect(t *testing.T) {
 	storedGame := GetStoredGame1()
 	storedGame.Red = "notanaddress"
-	black, found, err := storedGame.GetPlayerAddress("r")
+	red, found, err := storedGame.GetPlayerAddress("r")
 	require.Nil(t, red)
 	require.False(t, found)
 	require.EqualError(t, err, "red address is invalid: not an address: decoding bech32 failed: invalid separator index -1")

@@ -3,10 +3,11 @@ package types
 import (
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/alice/checkers/rules"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-	"time"
 )
 
 func (storedGame StoredGame) GetBlackAddress() (black sdk.AccAddress, err error) {
@@ -59,7 +60,7 @@ func (storedGame StoredGame) Validate() (err error) {
 
 // Introduce your own errors
 
-func (storedGame *StoredGame) GetDeadlineAsTime() (deadline time.Time, err error) {
+func (storedGame StoredGame) GetDeadlineAsTime() (deadline time.Time, err error) {
 	deadline, errDeadline := time.Parse(DeadlineLayout, storedGame.Deadline)
 	return deadline, sdkerrors.Wrapf(errDeadline, ErrInvalidDeadline.Error(), storedGame.Deadline)
 }

@@ -4850,6 +4850,7 @@ func TestPlayMoveUpToWinnerCalledBank(t *testing.T) {
 
 
 
+
 So when you say you are expecting a call to the bank you are expecting a call to the bank in the functions you call post you doing the defer and expecting. so you are saying yeah the bank will be called with thesee params etc or none at all.
 
 

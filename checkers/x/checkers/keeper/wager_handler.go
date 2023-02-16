@@ -1,4 +1,4 @@
-package Keeper
+package keeper
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
-func (k *Keeper) CollectWager(ctx sdk.Context, storedGame *types.StoredGamee) error {
+func (k *Keeper) CollectWager(ctx sdk.Context, storedGame *types.StoredGame) error {
 
 	if storedGame.MoveCount == 0 {
 		// Black plays first

@@ -4700,6 +4700,170 @@ func CheckersKeeperWithMocks(t testing.TB, bank *testutil.MockBankEscrowKeeper) 
 
 okay so it's like you create the mocks to simulate the bank functions like send to module and take from modle kind of deal..
 
+- The `CheckersKeeperWithMocks` function takes the mock in its arguments for more versatility.
+
+- Now adjust the small functions that set up the keeper before each test. You do not need to change them for the *create* tests because they will never call the bank. You have to do it for *play*, *reject*, and *forfeit*.
+
+*For play:*
+
+```go
+
+func setupMsgServerWithOneGameForPlayMove(t testing.TB) (types.MsgServer, keeper.Keeper, context.Context, *gomock.Controller, *testutil.MockBankEscrowKeeper) {
+    ctrl := gomock.NewController(t)
+    bankMock := testutil.NewMockBankEscrowKeeper(ctrl)
+    k, ctrl := keepertest.CheckersKeeperWithMocks(t, bankMock)
+    checkers.InitGenesis(ctx, *k, *types.DefaultGenesis())
+    server := keeper.NewMsgServerImpl(*k)
+    context := sdk.WrapSDKContext(ctx)
+    server.CreateGame(context, &types.MsgCreateGame{
+        Creator: alice,
+        Black:   bob,
+        Red:     carol,
+        Wager:   45,
+    })
+    return server, *k, context, ctrl, bankMock
+}
+
+```
+`x/checkers/keeper/msg_server_play_move_test.go`
+
+- This function creates the mock and returns two new objects:
+    - The mock controller, so that the `.Finish()` method can be called within the test itself. This is the function that will verify the call expectations placed on the mocks.
+    - The mocked bank escrow. This is the instance on which you place the call expectations.
+
+- Both objects will be used from the tests proper.
+
+- Do the same for reject. If you forfeit unit tests do not use `setupMsgServerWithOnGameForPlayMove`, then you should also create one such function the *forfeit* tests.
+
+
+**Adjust the unit tests** 
+
+- With these changes, you need to adjust many unit tests for *play, reject, and forfeit*. For many, you may only want ot make the test pass again with out checking any meaningful bank call expectations. There are different situations:
+
+    1. The mocked bank is not called. So you do not add any expectation, and still call the controller:
+
+    ```
+    msgServer, _, context, ctrl, _ := setupMsgServerWithOneGameForReject(t)
+    defer ctrl.Finish()
+    ```
+
+https://tutorials.cosmos.network/hands-on-exercise/2-ignite-cli-adv/5-payment-winning.html#adjust-the-unit-tests
+
+
+
+2. The mocked bank is called, but you do not care how it was called:
+
+```
+msgServer, _, context, ctrl, escrow := setupMsgServerWithOneGamForRejectGame(t)
+defer ctrl.Finish()
+escrow.ExpectAny(context)
+```
+
+
+3. The mocked bank is called, and you watn to add call expectations:
+
+```
+msgServer, keeper, context, ctrl, escrow := setupMsgServerWithOnGameForPlayMove(t)
+defer ctrl.Finish()
+pay := escrow.ExpectPay(context, bob, 45).Times(1)
+escrow.ExpectRefund(context, bob, 45).Times(1).After(pay)
+
+```
+
+This is saying that after the game is accepted and a wager has been made to start the game, the person rejects it or game ends so then the funds are refunded to bob.
+
+So the reason we use the mocked bank is so that we can test the banking functionality in relation to our playing game functionality. We are expecting the bank an external system to work a certain way for our tests. 
+
+This is good because if we create another module for example such as one that is custom and we are using functions from the checkers module through a keeper, it would mean that we can check the checkers is interacting correctly with our module under certain circumstances. aways good t check the intergration between systems.
+
+https://tutorials.cosmos.network/hands-on-exercise/2-ignite-cli-adv/5-payment-winning.html#make-use-of-mocks
+
+
+**Wager Handler Unit Tests**
+
+- After these adjustments, it is a good idea to add unit tests directly on the wager handling functions of the keeper. Create a new `wager_handler_test.go` file. In it:
+
+1. Add a setup helper function that does not create any message server:
+
+```
+func setupKeeperForWagerHandler(t testing.TB) (keeper.Keeper, context.Context, *gomock.Controller, *testutil.MockBankEscrowKeeper) {
+    ctrl := gomock.NewController(t)
+    bankMock := testutil.NewMockBankEscrowKeeper(ctrl)
+    k, ctx := keepertest.CheckersKeeperWithMocks(t, bankMock)
+    checkers.InitGenesis(ctx, *k, *types.DefaultGenesis())
+    context := sdk.WrapSDKContext(ctx)
+    return *k, context, ctrl, bankMock
+}
+```
+2. Add tests on the `CollectWager` function. For instance, when the game is malformed.
+
+```
+func TestWagerHandlerCollectWrongNoBlack(t *testing.T) {
+    keeper, context, ctrl, _ := setupKeeperForWagerHandler(t)
+    ctx := sdk.UnwrapSDKContext(context)
+    defer ctrl.Finish()
+    defer func() {
+        r := recover()
+        require.NotNil(t, r, "The code did not panic")
+        require.Equal(t, "black address is invalid: empty address string is not allowed", r)
+    }()
+    keeper.CollectWager(ctx, &types.StoredGame{
+        MoveCount: 0,
+    })
+}
+```
+
+Created account "alice" with address "cosmos1z9urgr47tznan0j8d59ek7lqv
+tg2h292290m" with mnemonic: "amount truck cheese prosper scorpion salute jungle pledge upset catalog sock sponsor tiny tag swamp industry repair truly capable become ivory defense enjoy spider"
+�🙂 Created account "bob" with address "cosmos1jg7dhpqez3emnemyf53fc5m9sf6
+d95jygwu4" with mnemonic: "walnut deposit thumb indoor arena boil sweet alien slide sausage blame acquire refuse permit split now doctor mirror draw salad cousin dish lion suffer"
+
+**Add bank escrow unit tests**
+
+- Now that the wager handling has been convincingly tested, you want to confirm that its functions are called at the right junctures. Add dedicated tests with message servers that confirm how the bank is called. Add them in existing files, for instance:
+
+```
+func TestPlayMoveUpToWinnerCalledBank(t *testing.T) {
+    msgServer, _, context, ctrl, escrow := setupMsgServerWithOneGameForPlayMove(t)
+    defer ctrl.Finish()
+    payBob := escrow.ExpectPay(context, bob, 45).Times(1)
+    payCarol := escrow.ExpectPay(context, carol, 45).Times(1).After(payBob)
+    escrow.ExpectRefund(context, bob, 90).Times(1).After(payCarol)
+
+    playAllMoves(t, msgServer, context, "1", testutil.Game1Moves)
+}
+```
+
+- After doing all that, confirm that your tests run:
+
+`go test github.com/alice/checkers/x/checkers/keeper`
+
+
+**Integration Tests**
+
+- Your unit tests pass, and they confirm that the bank is called as per your expectations. It would be nice to add further tests that use a *real* bank. This is possible with the help of integration tests.
+
+
+
+
+
+
+
+
+So when you say you are expecting a call to the bank you are expecting a call to the bank in the functions you call post you doing the defer and expecting. so you are saying yeah the bank will be called with thesee params etc or none at all.
+
+
+
+
+
+
+
+
+
+--- wikipedia ---
+
+
+
 **Technical Details**
 
 - Mock objects have the same interface as the real objects they mimic, allowing a client to remain unaware of whether it is using a real object or a mock object. Many available mock object frameworks allow the programmer to spcify which, and in what order, methods will be invoked on a mock object and what parameters will be passd to them, as well as what values will be returned. Thus, the behaviour of a complex object such as a network socket can be mimicked by a mock object, allowing the programmer to discover whether the object being tested responds appropriately to the wide variety of states such mock objects may be in.
@@ -4739,9 +4903,39 @@ func setupMsgServerWithOneGameForPlayMove(t testing.TB) (types.MsgServer, keeper
 - Do the same for *reject*. If you forfeit unit tests do not use `setupMsgServerWithOneGameForPlayMove`, then you should also create one such function the *forfeit* tests.
 
 
+Package gomock is a mock framework for Go.
 
+Standard Usage:
 
+```
+(1) Define an interface that you wish to mock.
+    type MyInterface interface {
+        SomeMethod(x int64, y string)
+    }
+(2) Use mockgen to generate a mock from the interface
+(3) Use the mock in a test:
+    func TestMyThing(t *testing.T) {
+        mockCtrl := gomock.NewController(t)
+        defer mockCtrl.Finish()
 
+        mockObj := something.NewMockMyInterface(mockCtrl)
+        mockObj.EXPECT().SomeMethod(4, "blah")
+        // pass mockObj to a real object and play with it.
+    }
+
+```
+
+- By default, expected calls are not enforced to run in any particular order. Call order dependency can be enforced by use of InOrder and/or Call.After. Call.After can create more varied call order dependencies, but InOrder is often more convenient.
+
+- The following examples create equivalent call order dependencies.
+
+- Example of using Call.After to chain expected call order:
+
+```
+firstCall := mockObj.EXPECT().SomeMethod(1, "first")
+secondCall := mockObj.EXPECT().SomeMethod(2, "second").After(firstCall)
+mockObj.EXPECT().SomeMethod(3, "third").After(secondCall)
+```
 
 
 
@@ -4802,6 +4996,8 @@ func NewKeeper(
 `x/gov/keeper/common_test.go`
 
 
+
+-- Replacing the hand coded test doubles with the generated test doubles.
 
 
 

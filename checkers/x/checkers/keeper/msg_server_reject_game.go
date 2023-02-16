@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+
 	"github.com/alice/checkers/rules"
 	"github.com/alice/checkers/x/checkers/types"
 
@@ -35,7 +36,7 @@ func (k msgServer) RejectGame(goCtx context.Context, msg *types.MsgRejectGame) (
 	}
 
 	// Refund the wager
-	k.Keeper.MustRefundWager(ctx, &sortedGame)
+	k.Keeper.MustRefundWager(ctx, &storedGame)
 
 	systemInfo, found := k.Keeper.GetSystemInfo(ctx)
 	if !found {

@@ -4843,6 +4843,150 @@ func TestPlayMoveUpToWinnerCalledBank(t *testing.T) {
 
 - Your unit tests pass, and they confirm that the bank is called as per your expectations. It would be nice to add further tests that use a *real* bank. This is possible with the help of integration tests.
 
+- As a reminder:
+    - At version 0.45.4 of the Cosmos SDK, an integration test creates a full app.
+    - At version 0.47 of the SDK, an integration test creates a minimal app, and a test that creates a full app is called an end-to-end test (E2E).
+
+- Fortunately, you do not have to do this from scratch: taking inspiration from tests on the bank module, prepare your code so as to accommodate and create a full app that will contain a bank keeper, and add new tests.
+
+- For unit tests, each function takes a `t *testing.T` object. For integration tests, each function will be a method on a test suite that inherits from testify's suite. This has the advantage that your test suite can have as many fieldas a necessary or useful. The objects that you have used and would welcome in the suite are:
+
+```
+keeper      keeper.Keeper
+msgServer   types.MsgServer
+ctx         sdk.Context
+```
+
+- You can spread the suite's methods to different files, so as to keep consistent naming for your test files.
+
+- When testing, `go test` will find the suite because you add a regular test that initializes the suite and runs it. The test suite is then automatically initialized with its `SetupTest` function via its parent `suite` class. After that, all the methods of the test suite are run.
+
+**Accommodate your code**
+
+- Copy and adjust from the Cosmos SDK
+
+- Ignite CLI created a default constructor for your App with a cosmoscmd.App return type, but this is not convenient. Instead of risking breaking other dependencies, add a new constructor with your App as a return type.
+
+- Use `encoding.go` taken from `here` where you:
+    - Import `"github.com/ignite-hq/cli/ignite/pkg/cosmosmd"`.
+    - Replace `simappparams.EncodingConfig` with `comoscmd.EncodingConfig`.
+    - Replace `simappparams.MakeTestEncodingConfig` with `appparams.MakeTestEncodingConfig`.
+
+- Use proto.go taken from here, where you:
+    - Import `"github.com/ignite-hq/cli/ignite/pkg/cosmoscmd"`.
+    - Replace `EncodingConfig` with `cosmoscmd.EncodingConfig`.
+
+- Use `test_helpers.go` taken from here, in which you:
+    - Adjust from `SimApp` to `App`
+    - Adjust from `New()` to `NewApp()`
+    - Initialize your checkers genesis:
+
+```
+    checkersGenesis := types.DefaultGenesis()
+    genesisStat[types.ModuleName] = app.AppCodec().MustMarshalJSON(checkersGenesis)
+
+```
+
+
+- Define your test suite in a new `keeper_integration_suite_test.go` file in a dedicated folder `tests/integration/checkers/keeper`:
+
+type IntegrationTestSuite struct {
+    suite.Suite
+
+    app         *checkersapp.App
+    msgServer   types.MsgServer
+    ctx         sdk.Context
+    queryClient types.QueryClient
+}
+tests integration ... keeper keeper_integration_suite_test.go
+View source
+6
+
+Direct go test to it:
+Copy func TestCheckersKeeperTestSuite(t *testing.T) {
+    suite.Run(t, new(IntegrationTestSuite))
+}
+tests integration ... keeper keeper_integration_suite_test.go
+View source
+7
+
+Create the suite.SetupTest function, taking inspiration from the bank tests (opens new window):
+Copy func (suite *IntegrationTestSuite) SetupTest() {
+    app := checkersapp.Setup(false)
+    ctx := app.BaseApp.NewContext(false, tmproto.Header{Time: time.Now()})
+
+    app.AccountKeeper.SetParams(ctx, authtypes.DefaultParams())
+    app.BankKeeper.SetParams(ctx, banktypes.DefaultParams())
+    checkersModuleAddress = app.AccountKeeper.GetModuleAddress(types.ModuleName).String()
+
+    queryHelper := baseapp.NewQueryServerTestHelper(ctx, app.InterfaceRegistry())
+    types.RegisterQueryServer(queryHelper, app.CheckersKeeper)
+    queryClient := types.NewQueryClient(queryHelper)
+
+    suite.app = app
+    suite.msgServer = keeper.NewMsgServerImpl(app.CheckersKeeper)
+    suite.ctx = ctx
+    suite.queryClient = queryClient
+}
+tests integration ... keeper keeper_integration_suite_test.go
+View source
+
+This SetupTest function (opens new window) is like a beforeEach as found in other test libraries. With it, you always get a new app in each test, without interference between them. Do not omit it (opens new window) unless you have specific reasons to do so.
+
+It collects your checkersModuleAddress for later use in tests that check events and balances:
+Copy var (
+    checkersModuleAddress string
+)
+tests integration ... keeper keeper_integration_suite_test.go
+View source
+#
+Test the test suite
+
+You can now confirm you did all this correctly by running these new keeper integration tests, although the suite has no tests. Note how the path to call has changed:
+
+Copy $ go test github.com/alice/checkers/tests/integration/checkers/keeper
+
+
+**Helpers for money checking** 
+
+- Your upcoming integration tests will include checks on wagers being paid, lost, and won, so your tests need to initialize some bank balances for your players. This is made easier with a few helpers, including a helper to confirm a bank balance.
+
+
+1. Make a bank genesis Balance. type from primitives:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4853,17 +4997,7 @@ func TestPlayMoveUpToWinnerCalledBank(t *testing.T) {
 
 So when you say you are expecting a call to the bank you are expecting a call to the bank in the functions you call post you doing the defer and expecting. so you are saying yeah the bank will be called with thesee params etc or none at all.
 
-
-
-
-
-
-
-
-
 --- wikipedia ---
-
-
 
 **Technical Details**
 

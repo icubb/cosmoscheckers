@@ -241,8 +241,34 @@ type App struct {
 	sm *module.SimulationManager
 }
 
-// New returns a reference to an initialized blockchain app
+// New returns a reference to an initialised blockchain app
 func New(
+	logger log.Logger,
+	db dbm.DB,
+	traceStore io.Writer,
+	loadLatest bool,
+	skipUpgradeHeights map[int64]bool,
+	homePath string,
+	invCheckPeriod uint,
+	encodingConfig cosmoscmd.EncodingConfig,
+	appOpts servertypes.AppOptions,
+	baseAppOptions ...func(*baseapp.BaseApp),
+) cosmoscmd.App {
+	return NewApp(
+		logger,
+		db,
+		traceStore,
+		loadLatest,
+		skipUpgradeHeights,
+		homePath,
+		invCheckPeriod,
+		encodingConfig,
+		appOpts,
+		baseAppOptions...)
+}
+
+// New returns a reference to an initialized blockchain app
+func NewApp(
 	logger log.Logger,
 	db dbm.DB,
 	traceStore io.Writer,

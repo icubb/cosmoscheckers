@@ -4954,9 +4954,252 @@ Copy $ go test github.com/alice/checkers/tests/integration/checkers/keeper
 
 1. Make a bank genesis Balance. type from primitives:
 
+```
+func makeBalance(address string, balance int64) banktypes.Balance {
+    return banktypes.Balance {
+        Address: address,
+        Coins: sdk.Coins {
+            sdk.Coin{
+                Denom: sdk.DefaultBondDenom,
+                Amount: sdk.NewInt(balance),
+            }
+        }
+    }
+}
+
+```
+
+2. Declare default accounts and balances that will be useful for you:
+
+```
+import (
+    "github.com/alice/checkers/x/checkers/testutil"
+) 
+
+const (
+    alice = testutil.Alice
+    bob   = testutil.Bob
+    carol = testutil.Carol
+)
+const (
+    balAlice = 50000000
+    balBob   = 20000000
+    balCarol = 10000000
+)
+```
+
+3. Make your preferred bank genesis state:
+
+```
+func getBankGenesis() *banktypes.GenesisState {
+    coins := []banktypes.Balance{
+        makeBalance(alice, balAlice),
+        makeBalance(bob, balBob),
+        makeBalance(carol, balCarol),
+    }
+    supply := banktypes.Supply{
+        Total: coins[0].Coins.Add(coins[1].Coins...).Add(coins[2].Coins...)
+    }
+
+    state := banktypes.NewGenesisState(
+        banktypes.DefaultParams(),
+        coins,
+        supply.GetTotal(),
+        []banktypes.Metadata{})
+
+    return state
+}
+```
+
+4. Add a simple function to prepare your suite with your desired balances:
+
+```
+func (suite *IntegrationTestSuite) setupSuiteWithBalances() {
+    suite.app.BankKeeper.InitGenesis(suite.ctx, getBankGenesis())
+}
+
+```
+
+5. Add a function to check balances from primitives:
+
+```go
+func (suite *IntegrationTestSuite) RequireBankBalance(expected int, atAddress string) {
+    sdkAdd, err := sdk.AccAddressFromBech32(atAddress)
+    suite.Require().Nil(err, "Failed to parse address: %s", atAddress)
+    suite.Require().Equal(
+        int64(expected),
+        suite.app.BankKeeper.GetBalance(suite.ctx, sdkAdd, sdk.DefaultBondDenom).Amount.Int64())
+}
+```
+
+- With the preperation done, what does an integration test ethod look like?
+
+**Anatomy of an integration suite test** 
+
+- Now you must add integration tests for your keeper in new files. What does an integration test look like?
+Take the example of a simple unit test ported to the integration test suite.
+
+The simple unit test: 
+
+```
+func TestCreate1GameHasSaved(t *testing.T) {
+	msgSrvr, keeper, context := setupMsgServerCreateGame(t)
+	ctx := sdk.UnwrapSDKContext(context)
+	msgSrvr.CreateGame(context, &types.MsgCreateGame{
+		Creator: alice,
+		Black:   bob,
+		Red:     carol,
+		Wager:   45,
+	})
+	systemInfo, found := keeper.GetSystemInfo(ctx)
+	require.True(t, found)
+	require.EqualValues(t, types.SystemInfo{
+		NextId:        2,
+		FifoHeadIndex: "1",
+		FifoTailIndex: "1",
+	}, systemInfo)
+	game1, found1 := keeper.GetStoredGame(ctx, "1")
+	require.True(t, found1)
+	require.EqualValues(t, types.StoredGame{
+		Index:       "1",
+		Board:       "*b*b*b*b|b*b*b*b*|*b*b*b*b|********|********|r*r*r*r*|*r*r*r*r|r*r*r*r*",
+		Turn:        "b",
+		Black:       bob,
+		Red:         carol,
+		MoveCount:   0,
+		BeforeIndex: "-1",
+		AfterIndex:  "-1",
+		Deadline:    types.FormatDeadline(ctx.BlockTime().Add(types.MaxTurnDuration)),
+		Winner:      "*",
+		Wager:       45,
+	}, game1)
+}
+```
+
+
+1. The method has a decleration:
+
+`func (suite *IntegrationTestSuite) TestCreate1GameHasSaved()`
+
+- It is declared as a member of your test suite, and is prefixed with Test
+
+2. The **setup** can be done as you like, but just for unit tests you ought to create a helper and use it. Here one exists already:
+
+```
+suite.setupSuiteWithBalances()
+goCtx := sdk.WrapSDKContext(suite.ctx)
+```
+
+3. The **action** is no different from a unit test's action, other than that you get the `keeper` or `msgServer` from the suite's fields:
+
+```go
+suite.msgServer.CreateGame(goCtx, &types.MsgCreateGame{
+    Creator: alice,
+    Red:    bob,
+    Black:  carol,
+    Wager: 45, 
+})
+
+keeper := suite.app.CheckersKeeper
+```
+
+4. The **verification** is done with `suite.Require().X`, but otherwise looks similar to the shorter `require.X` of unit tests.
+
+```
+systemInfo, found := keeper.GetSystemInfo(suite.ctx)
+suite.Require().True(found)
+suite.Require().EqualValues(types.SystemInfo{
+    NextId: 2,
+    FifoHeadIndex: "1",
+    FifoTailIndex: "1",
+}, systemInfo)
+```
+
+- In fact, it is the exactly the same require object.
+
+- You have added an integration test that copies an existing unit test. It demonstrates the concept but is of limited additional utility. since it does not integrate other systems ?? pretty much because it is a unit test.
+
+**Extra tests**
+
+- It is time to add extra tests that check money handling by the bank. Before jumping in, as you did in *play* unit tests you can add a method that prepares your suite's keeper with a game ready to be played on:
+
+```
+func (suite *IntegrationTestSuite) setupSuiteWithOneGameForPlayMove() {
+    suite.setupSuiteWithBalances()
+    goCtx := sdk.WrapSDKContext(suite.ctx)
+    suite.msgServer.CreateGame(goCtx, &types.MsgCreateGame{
+        Creator: alice,
+        Red: bob,
+        Black: carol,
+        Wager: 45,
+    })
+}
+```
+
+You will call this game from the relevant tests. You can do the same for reject (opens new window).
+
+For the tests proper, before an action that you expect to transfer money (or not) you can verify the initial position:
+Copy suite.RequireBankBalance(balAlice, alice)
+suite.RequireBankBalance(balBob, bob)
+suite.RequireBankBalance(balCarol, carol)
+suite.RequireBankBalance(0, checkersModuleAddress)
+tests integration ... keeper msg_server_play_move_test.go
+View source
+
+After the action you can test the new balances, for instance:
+Copy suite.RequireBankBalance(balAlice, alice)
+suite.RequireBankBalance(balBob-45, bob)
+suite.RequireBankBalance(balCarol, carol)
+suite.RequireBankBalance(45, checkersModuleAddress)
+tests integration ... keeper msg_server_play_move_test.go
+View source
+
+How you subdivide your tests and where you insert these balance checks is up to you. You can find examples here for:
+
+- Creating a game
+
+- Playing the first move, the second move, including up to a resolution. You can also check the eventts.
+- Failing to play a game because of a failiure to pay the wager on the first move and second move.
+- Rejecting a game, including when there have been moves played.
+- Forfeiting a game, including when there has been ne move played or two.
+
+**What happend to the events?**
+
+- With the new tests, you may think that the events are compromised. For instance, the event type "transfer" normally comes with three attributes, but when the bank has made two transfers the "transfer" event ends up with 6 attributes. This is just the way events are organized: per type, with the attributes piled in.
+
+- When checking emitted events, you need to skip over the attributes you are not checking. You can easily achieve that with Go slices.
+
+- For instance, here `transferEvent.Attributes[6:]` discards the first six attributes:
+
+```
+transferEvent := events[6]
+suite.Require().Equal(transferEvent.Type, "transfer")
+suite.Require().EqualValues([]sdk.Attribute{
+    {Key: "recipient", Value: carol},
+    {Key: "sender", Value: checkersModuleAddress},
+    {Key: "amount", Value: "90stake"},
+}, transferEvent.Attributes[6:])
+```
+
+still need to do the other files in the integration keeper from github.
 
 
 
+- What i don't understand is why are we wrapping the context not unwrapping it like the other contexts? ??
+
+
+
+
+
+
+
+
+
+
+This doesn't make sense, how do the accounts get the balances they have been provided??
+how does that work?
+
+like how does the account get money ??
 
 
 

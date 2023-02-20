@@ -188,7 +188,7 @@ func (suite *IntegrationTestSuite) TestPlayMoveEmittedEvenZero() {
 		ToY:       3,
 	})
 
-	events := sdk.StringEvents(suite.ctx.EventManager().ABCIEvents())
+	events := sdk.StringifyEvents(suite.ctx.EventManager().ABCIEvents())
 	suite.Require().Len(events, 6)
 
 	playEvent := events[3]

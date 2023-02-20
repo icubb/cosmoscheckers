@@ -4,11 +4,16 @@ import (
 	"testing"
 	"time"
 
+	checkersapp "github.com/alice/checkers/app"
 	"github.com/alice/checkers/x/checkers/keeper"
 	"github.com/alice/checkers/x/checkers/testutil"
 	"github.com/alice/checkers/x/checkers/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/stretchr/testify/suite"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 const (
@@ -62,7 +67,7 @@ func (suite *IntegrationTestSuite) SetupTest() {
 	// getting the checkers module address from the account keeper by the module name.
 	checkersModuleAddress = app.AccountKeeper.GetModuleAddress(types.ModuleName).String()
 
-	// Something to deal with the queries. 
+	// Something to deal with the queries.
 	queryHelper := baseapp.NewQueryServerTestHelper(ctx, app.InterfaceRegistry())
 	types.RegisterQueryServer(queryHelper, app.CheckersKeeper)
 	queryClient := types.NewQueryClient(queryHelper)
@@ -92,23 +97,23 @@ func makeBalance(address string, balance int64) banktypes.Balance {
 func getBankGenesis() *banktypes.GenesisState {
 	// array of coins of type banktypes.Balance
 	// got the address and the aray of coin objects that thy have.
-	coins := []banktypes.Balance {
+	coins := []banktypes.Balance{
 		makeBalance(alice, balAlice),
 		makeBalance(bob, balBob),
 		makeBalance(carol, balCarol),
 	}
-	
+
 	// supply is equal to the sum of all the balances.
 	supply := banktypes.Supply{
-		Total: coins[0].Coins.Add(coins[1].Coins...).Add(coins[2].Coins...)
+		Total: coins[0].Coins.Add(coins[1].Coins...).Add(coins[2].Coins...),
 	}
-    
+
 	// setting the state of the new genesis i assume because coins array  this just gets the genesis state lmao
 	// has the balances and addresses associated with the balance this means that they are assigned that balance.
 	state := banktypes.NewGenesisState(
 		banktypes.DefaultParams(),
 		coins,
-		supply.GetTotal(),
+		supply.Total,
 		[]banktypes.Metadata{})
 
 	return state
@@ -124,9 +129,7 @@ func (suite *IntegrationTestSuite) setupSuiteWithBalances() {
 func (suite *IntegrationTestSuite) RequireBankBalance(expected int, atAddress string) {
 	sdkAdd, err := sdk.AccAddressFromBech32(atAddress)
 	suite.Require().Nil(err, "Failed to parse address: %s", atAddress)
-	suite.Require.Equal(
+	suite.Require().Equal(
 		int64(expected),
 		suite.app.BankKeeper.GetBalance(suite.ctx, sdkAdd, sdk.DefaultBondDenom).Amount.Int64())
 }
-
-

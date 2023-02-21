@@ -90,8 +90,8 @@ func (suite *IntegrationTestSuite) TestForfeitPlayedOnceRefundedEmitted() {
 		Type: "game-forfeited",
 		Attributes: []sdk.Attribute{
 			{Key: "game-index", Value: "1"},
-			{Key: "winner", Value: "1"},
-			{Key: "board", Value: "1"},
+			{Key: "winner", Value: "*"},
+			{Key: "board", Value: "*b*b*b*b|b*b*b*b*|***b*b*b|**b*****|********|r*r*r*r*|*r*r*r*r|r*r*r*r*"},
 		},
 	}, forfeitEvents)
 

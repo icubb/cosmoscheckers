@@ -11,7 +11,7 @@ import (
 // App user shouldn't create new codecs - use the app.AppCodec instead.
 // [DEPRECATED]
 func MakeTestEncodingConfig() cosmoscmd.EncodingConfig {
-	encodingConfig := appparams.MakeEncodingConfig()
+	encodingConfig := appparams.MakeTestEncodingConfig()
 	std.RegisterLegacyAminoCodec(encodingConfig.Amino)
 	std.RegisterInterfaces(encodingConfig.InterfaceRegistry)
 	ModuleBasics.RegisterLegacyAminoCodec(encodingConfig.Amino)

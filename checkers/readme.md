@@ -5188,6 +5188,16 @@ still need to do the other files in the integration keeper from github.
 - What i don't understand is why are we wrapping the context not unwrapping it like the other contexts? ??
 
 
+**Interact via the CLI** 
+
+- With tests done, see what happens at the command-line.
+
+- Keep the game expiry at 5 minutes to be able to test a forfeit, as done in a previous section. Now, you need to check balances after relevant steps to test that wagers are being withheld and paid.
+
+- How much do Alice and Bob have to start with:
+
+
+
 
 
 

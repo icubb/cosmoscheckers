@@ -126,7 +126,7 @@ func (suite *IntegrationTestSuite) TestPlayMoveCannotPayFails() {
 		ToY:       3,
 	})
 	suite.Require().Nil(playMoveResponse)
-	suite.Require().Equal("black cannot pay the wager: 10000000stake is smaller than 10000001stake: insufficent funds", err.Error())
+	suite.Require().Equal("black cannot pay the wager: 10000000stake is smaller than 10000001stake: insufficient funds", err.Error())
 }
 
 func (suite *IntegrationTestSuite) TestPlayMoveEmitted() {

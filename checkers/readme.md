@@ -5418,7 +5418,145 @@ THe reason is that base app incurrs gas and your messages in your module also do
 - Here, you want to confirm that gas is consumed by different actions. The difficulty is that Alice's and Bob's balances in `stake` tokens change not only because of the gas used but also depending on the gas price. AN easy measurement is to use `--dry-run`:
 
 
+`docker exec -it checkers checkersd create-game $alice $bob 1000000 --from $alice --dry-run`
 
+
+- Say this returns `69422`, which is the estimated gas used. Now comment out the `.ConsumeGas` line in `msg_server_create_game.go`, save it, wait a few minutes for ignite CLI to rebuild, and try again:
+
+`docker exec -it checkers checkersd tx checkers create-game $alice $bob 1000000 --from $alice --dry-run`
+
+- Say, this time you get `54362`. THis is good the `15000 gas is no lnger part of the estimateion, as expected. Uncomment `.ConsumeGas` line. You can try `--dry-run` on play and reject too.
+
+- Estimating with `--dry-run` is a good start. Now have Alice create a game and check htegas used in the transaction
+
+`checkersd tx checkers create-game $alice $bob 1000000 --from $alice`
+
+- This mentions:
+
+`gas_used: "69422"`
+
+
+- You could impose a `--gas-prices` and then check balances, but this would obfuscate the gas consumption which is what you want to confirm.
+
+- As before, comment the `.ConsumeGas` line `msg_server_create_game.go` and wait for Ignite CLI to rebuild. Then try again:
+
+`checkersd tx checkers create-game $alice $bob 1000000 --from $alice`
+
+- This mentions:
+
+```
+gas_used: "65507"
+```
+
+Put back the .ConsumeGas line and rebuild. Then try again:
+
+Copy $ checkersd tx checkers create-game $alice $bob 1000000 --from $alice -y | grep gas_used
+
+It now consistently mentions a difference of 15000:
+Copy gas_used: "80507"
+
+That is sufficient confirmation.
+
+What about the refund on reject? With the gas refund in place, reject one of the many games you created:
+
+Copy $ checkersd tx checkers reject-game 9 --from $alice
+
+This shows:
+Copy gas_used: "55003"
+
+Now comment out the RefundGas part and reject another game. This shows:
+Copy gas_used: "69157"
+
+This is close to 14000 more expensive than when there is a refund.
+
+Do not worry if you do not get the same values. At least try multiple times to see if the values look like each other on your system.
+synopsis
+
+To summarize, this section has explored:
+
+    - How to add gas metering to your application so participants contribute toward the cost of the work being demanded of the network by gameplay, and add costs to discourage spam.
+    
+    - What new data constants need to be added, such as fees for creating games or playing moves, and gas consumption lines for handlers relating to these gameplay aspects.
+    
+    - Best practices for gas metering, including where not to call fixed gas costs and the implications of a user sending transactions without enough gas to process them.
+    
+    - What texts to add that confirm gas consumption, acknowledging the limitations on precision that the use of BaseApp and your module also imposes on understanding how much gas is used by various transactions.
+    
+    - How to interact via the CLI to confirm that gas is being consumed by different actions, acknowledging the additional complications arising from variable account balances and gas price.
+
+
+**Help Find a Correct Move** 
+
+- Make sure you have everything you need before proceeding:
+    - You understand the concepts of queries and Protobuf
+    - You have Go installed
+    - You have the checkers blockchain codebase up to gas metering. If not, follow the previous steps or check out the relevant version.
+
+- In this section you will:
+    - Improve usability with queries
+    - Create a battery of unit and integration tests.
+
+- A player sends a `MsgPlayMove` when making a move. This message can succed or fail for several reasons. One error situation is when the messag represents an invalid move. A GUI is the first place where a vasd move can be caught, but it is still possible that a GUI wrongly enforces the rules.
+
+- Since sending transactions includes costs, how do you assist participants in making sure they at least do not make a wrong move?
+
+- Players should be able to confirm that a move is valid before burning gas. To add this functionality, you need to create a way for the player to call the `Move` function withou changing the game's state. Use a query because they are evaluated in memory and do not commit anything permanently to storage.
+
+**Some Initial Thoughts** 
+
+- When it comes to finding a correct move, ask:
+    - What structure will facilitate this check?
+    - Who do you let make such checks?
+    - What acceptable limitations do you have for this?
+    - Are there new errors to report back?
+    - What event shoukd you emit?
+
+**Code needs** 
+
+- What Ignite CLI commands, if any, will assist you?
+- How do you adjust what Ignite CLI created for you?
+- Where do you make your changes?
+- How would you unit-test these new elements?
+- How would you use Ignite CLI to locally run a one-node blockchain and interact with it via the CLI to see what you get?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+https://tutorials.cosmos.network/hands-on-exercise/2-ignite-cli-adv/7-can-play.html
+
+
+�🙂 Created account "alice" with address "cosmos1pjsqwjm34hrf2ykp3qscv0phxsrhkv50q0a8fl" 
+th mnemonic: "ivory shed orange buzz jungle typical winner during dumb alert spy mechanic 
+rate share display turkey stuff price turkey vague office empower practice trash"
+�🙂 Created account "bob" with address "cosmos14hve480dk6ec48vjh3fycjksfnnn3asxweeqs3" wi
+ mnemonic: "odor empty spider powder mention region noise allow soccer city develop warrior pledge recycle earn mass one key few truth medal spring tomato easy"
 
 
 

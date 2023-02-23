@@ -5196,20 +5196,299 @@ still need to do the other files in the integration keeper from github.
 
 - How much do Alice and Bob have to start with:
 
+```go
+checkersd query bank balances $alice
+checkersd query bank balances $bob
+```
+
+- This prints:
+
+```
+balances:
+    - amount: "100000000"
+    denom: stake
+    - amount: "20000"
+    denom: token
+    pagination:
+    next_key: null
+    total: "0"
+    balances:
+    - amount: "100000000"
+    denom: stake
+    - amount: "10000"
+    denom: token
+    pagination:
+    next_key: null
+    total: "0"
+```
+
+- A game that expires
+
+- Create a game on which the wager will be refunded because the player playing `red` did not join:
+
+`checkersd tx checkers create-game $alice $bob 1000000 --from $alice`
+
+- Confirm that the balances of both Alice and Bob are unchanged - as they have not played yet.
+
+- In this example, Alice paid no gas fees, other than the transaction costs, to create a game. The gas price is likely `0` here anyway. This is fixed in the next section.
 
 
 
+�🙂 Created account "alice" with address "cosmos16atjxa796g00vgc289qnllw0t2nz3r5rn7l44q" w
+h mnemonic: "tree bleak pull swear champion kind draw attitude purity wasp umbrella actress news desk before explain emotion logic output disorder able cactus chuckle lottery"       
+�🙂 Created account "bob" with address "cosmos1axy7pu6zdrqq7wmhhv2mlewey0lrnqxphlz7t3" wit
+mnemonic: "obscure punch canoe grit cannon snake oblige game someone rival lazy invite velvet camera sniff leisure yard guilt across hint almost excite mistake lawn"
+
+otal: "0"
+#
+A game played twice
+
+Now create a game in which both players only play once each, i.e. where the player playing black forfeits:
+
+Copy $ checkersd tx checkers create-game $alice $bob 1000000 --from $alice
+$ checkersd tx checkers play-move 2 1 2 2 3 --from $alice
+$ checkersd tx checkers play-move 2 0 5 1 4 --from $bob
+
+Confirm that both Alice and Bob paid their wagers. Wait 5 minutes for the game to expire and check again:
+
+Copy $ checkersd query bank balances $alice
+$ checkersd query bank balances $bob
+
+This shows:
+Copy balances:
+- amount: "99000000" # <- her 1,000,000 are gone for good
+  denom: stake
+...
+balances:
+- amount: "101000000" # <- 1,000,000 more than at the beginning
+  denom: stake
+...
 
 
 
+This is correct: Bob was the winner by forfeit.
+
+Similarly, you can test that Alice gets her wager back when Alice creates a game, Alice plays, and then Bob rejects it.
+
+It would be difficult to test by CLI when there is a winner after a full game. That would be better teste with a GUI, or by using integration tests as you did above.
 
 
+**Synopsis** 
+
+- To summarize, this section has explored:
+
+- How to work with the Bank module and handle players making wagers on games, now that the application supports live games playing to completion (with the winner claiming both wagers) or expiring through inactivity (with the inactive player forfeiting their wager as if losing), and no possibility of withheld value being stranded in inactive games.
+
+- How to add handling actions that ask the bank module to perform the token transfers required by the wager, and where to invoke them in the message handlers.
+    
+- How to create a new wager-handling file with functions to collect a wager, refund a wager, and pay winnings, in which must prefixes indicate either a user-side error (leading to a failed transaction) or a failure of the application's escrow account (requiring the whole application be terminated).
+
+- How to run integration tests, which requires you to first build a proper bank keeper, create new helpers, refactor your existing keeper tests, account for the new events being emitted from the bank, and add extra checks of money handling.
+
+- How to interact with the CLI to check account balances to test that wagers are being withheld and paid.
 
 
 This doesn't make sense, how do the accounts get the balances they have been provided??
 how does that work?
 
 like how does the account get money ??
+
+
+**Incentivize Players**
+
+- In this section, you will:
+    - Add transaction fees.
+    - Set fees and add metering.
+    - Do integration tests.
+
+
+- Players can start checkers with your Cosmos blockchain. Transaction fees are paid by the players themselves, at least the fee related to transporting the serialized bytes and the other gas-metered parts like `bank`.
+
+- Your blockchain is taking shape, but you need to take care of peripheral concerns. For instance, how do you make sure that paticiapnts pay their fair share of the costs they impose on the network?
+
+- Next, you should add your own gas metering to reflect the costs tha different transactions impose, or you can add costs to discourage spam.
+
+
+**Some initial thoughts**
+
+- To continue developing your checkers blockchain:
+    - At what junctures can you charge gas?
+    - At what junctures can you **not** charge gas, and what do you do about it?
+    - Are there new errors to report back?
+    - What event should you emit?
+
+**Code Needs** 
+
+- Before diving into the specifics, ask yourself:
+    - What Ignite CLI commands, if any, will assist you?
+    - How do you adjust what Ignite CLI created for you?
+    - Where do you make your changes?
+    - How would you unit-test these new elements?
+    - How would you use Ignite CLI to locally run a one-node blockchain and interact with it via the CLI to see what you get?
+
+**New Data** 
+
+- These values provide examples but you can, and should, set your own. To get a rule-of-thumb idea of how much gas is already consumed without your additions, look back at your previous transactions. Save your pick of the values as new constants:
+
+```
+    const (
+        CreateGameGas       = 15000
+        PlayMoveGas         = 1000
+        RejectGameRefundGas = 14000
+    )
+````
+
+- There are debateable rationales for each of these values:
+    1. Creating a game imposes a large cost because it creates a brand new entry in storage, which contains many fields. This new storage entry is stored on all nodes.
+    2. Playing a game imposes a smaller cost because it makes changes to an existing storage entry, which was already paid for. On the other hand it costs some computation and pushes back the time by when the game expires.
+    3. When a player rejects a game, the storage entry is deleted, which relieves the nodes of the burden of storing it. Hence it makes sense to incentivize players to reject games by **refunding** some gas. Since some computation was still don beween creation and rejection, the refund is less than the cost of creation.
+
+- The cost in gas but how much is the gas cost in the chain that is what im tryin to figure out...
+
+
+- As a checkers blockchain creator, your goal may be to have as many on-going games as possible. Adding costs sounds counter to this goal. However, here the goal is to optimize potentialgongestion at the margin. IF these i little activity, then the gas price will go down, and these  additional costs will be trivial for players anyway. Conversely, if there is a lot of network activity, the gas price will go up, and whether you have put additional costs or not player s will still be less likely to participate. 
+
+
+**Add Handling** 
+
+- Add a line that consumes or refunds the designated amount of gas in each relevant handler:
+    1. When handling a game creation:
+    ```go
+    k.Keeper.SetSystemInfo(ctx, systemInfo)
+    ctx.GasMeter().ConsumeGas(types.CreateGameGas, "Create Game")
+    ```
+
+    2. When handling a move:
+    ```go
+    k.Keeper.SetSystemInfo(ctx, systemInfo)
+    ctx.GasMeter().ConsumeGas(types.PlayMoveGas, "Play a move")
+    ```
+
+    3. When handling a game rejection, you make sure that you are not refunding more than what has already been consumed:
+    ```go
+    k.Keeper.SetSystemInfo(ctx, systemInfo)
+    refund := uint64(types.RejectGameRefundGas)
+    if consumed := ctx.GasMeter().GasConsumed(); consumed < refund {
+        refund = consumed
+    }
+    ctx.GasMeter().RefundGas(refund, "Reject Game")
+    ```
+
+- You do not meter gas in your `EndBlock` handler because it is **not** called by a player sending a transaction.
+- Instead, it is a service rendered by the network. If you want to account for the gas cost of a game expiration, you have to devise a way to pre-collect it from players as part of the other messages.
+
+- As part of your code optimization, avoid calling `ConsumeGas` with a fixed gas cost (for instance `k`) from within a loop. each pass of the loop uses computation resources (`c`) on each node. If you know the number of times your code loops (`n`), you know that running the full loop will use `n*c` computation resources.
+
+- Now consider the case of a user who sent a transaction without enough gas. The transaction will fail anyway, but at what point will it fail?
+    1. If you call `ConsumeGas(k)` *within* the loop, the transaction will fail during one of the passes (the `m`th pass). This means that the node has already used `m*c` computation resources.
+    2. If you call `ConsumeGas(n*k)` once *before* the loop, the transaction will fail immediately, and the node will have used `0` computation resources.
+
+Yeah that makes sense so use the gas for the predetermined amount of loops prior to using the loops and if the transactions fails it wont use gas as would be the case if you were to put them inside the loops. .
+But if n is undetermined you might have to put it in thte loop.
+
+- Choosing option 2 improves the effectiveness of your blockchain, and potentially protects it from spam and denial-of-service attacks. Additionally, making only a single call to `ConsumeGas` slightly saves computation resources of the node. 
+
+**Unit Tests**
+
+- Now you must add tests that confirm the gas consumption. However, it is not possible to differentiate the gas costs that BaseApp is incurring on your messages from the gas cost your module imposes on top of it. Also, you cannot distinguish via the descriptor unless it panics. Nevertheless, you can add a lame test like:
+
+```
+func TestCreate1GameConsumedGas(t *testing.T) {
+    msgSrvr, _, context := setupMsgServerCreateGame(t)
+    ctx := sdk.UnwrapSDKContext(context)
+    before := ctx.GasMeter().GasConsumed()
+    msgSrvr.CreateGame(context, &types.MsgCreateGame{
+        Creator: alice,
+        Black: bob,
+        Red: carol,
+        Wager: 45,
+    })
+    after := ctx.GasMeter().GasConsumed()
+    require.GreaterOrEqual(t, after, before+25_000)
+}
+```
+THe reason is that base app incurrs gas and your messages in your module also do to so its hard to prectict the gas but i will see more of the reasoning soon.
+
+- Now add a nother test for play,  and one for mrejcet . Node that after imu ch less than beofre.
+
+- These new tests are lame, because their `5_000` or `25_000` values cannot be predicted but have to be found by trial and error.
+
+**Interact via the CLI** 
+
+- Here, you want to confirm that gas is consumed by different actions. The difficulty is that Alice's and Bob's balances in `stake` tokens change not only because of the gas used but also depending on the gas price. AN easy measurement is to use `--dry-run`:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

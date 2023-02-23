@@ -2,10 +2,11 @@ package keeper
 
 import (
 	"context"
+	"strconv"
+
 	"github.com/alice/checkers/rules"
 	"github.com/alice/checkers/x/checkers/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"strconv"
 )
 
 func (k msgServer) CreateGame(goCtx context.Context, msg *types.MsgCreateGame) (*types.MsgCreateGameResponse, error) {
@@ -56,6 +57,9 @@ func (k msgServer) CreateGame(goCtx context.Context, msg *types.MsgCreateGame) (
 	// created by Ignite CLI
 	systemInfo.NextId++
 	k.Keeper.SetSystemInfo(ctx, systemInfo)
+
+	// Consume the gas for creating the game.
+	ctx.GasMeter().ConsumeGas(types.CreateGameGas, "Create game")
 
 	// Emit the events when the game is created
 

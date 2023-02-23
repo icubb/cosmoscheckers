@@ -49,6 +49,14 @@ func (k msgServer) RejectGame(goCtx context.Context, msg *types.MsgRejectGame) (
 	// this is set since it is updated in the remove fifo function.
 	k.Keeper.SetSystemInfo(ctx, systemInfo)
 
+	// When handling game rejection, you make sure that you are not
+	// refunding more than what has already been consumed.
+	refund := uint64(types.RejectGameRefundGas)
+	if consumed := ctx.GasMeter().GasConsumed(); consumed < refund {
+		refund = consumed
+	}
+	ctx.GasMeter().RefundGas(refund, "Reject game")
+
 	// emit the relevant event:
 
 	ctx.EventManager().EmitEvent(

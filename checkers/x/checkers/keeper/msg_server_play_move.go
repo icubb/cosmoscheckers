@@ -3,11 +3,12 @@ package keeper
 import (
 	"context"
 
+	"strconv"
+
 	"github.com/alice/checkers/rules"
 	"github.com/alice/checkers/x/checkers/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-	"strconv"
 )
 
 func (k msgServer) PlayMove(goCtx context.Context, msg *types.MsgPlayMove) (*types.MsgPlayMoveResponse, error) {
@@ -108,6 +109,9 @@ func (k msgServer) PlayMove(goCtx context.Context, msg *types.MsgPlayMove) (*typ
 	// Sets the stored and system info that changed in the send to fifo tail section.
 	k.Keeper.SetStoredGame(ctx, storedGame)
 	k.Keeper.SetSystemInfo(ctx, systemInfo)
+
+	// Consume the gas for playing a move
+	ctx.GasMeter().ConsumeGas(types.PlayMoveGas, "Play a move")
 
 	// This updates the fields that were modified using the Keeper.SetStoredGame
 	// Function, as when you created and saved the game.

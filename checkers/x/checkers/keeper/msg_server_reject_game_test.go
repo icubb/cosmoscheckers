@@ -289,3 +289,17 @@ func TestRejectGameByRedWrong2Moves(t *testing.T) {
 	require.Nil(t, rejectGameResponse)
 	require.Equal(t, "red player has already played", err.Error())
 }
+
+//These are lame tests because 5_000 cannot be predicted but have to be found via trial and error.
+func TestRejectGameByBlackRefundedGas(t *testing.T) {
+	msgServer, _, context, ctrl, _ := setupMsgServerWithOneGameForRejectGame(t)
+	ctx := sdk.UnwrapSDKContext(context)
+	defer ctrl.Finish()
+	before := ctx.GasMeter().GasConsumed()
+	msgServer.RejectGame(context, &types.MsgRejectGame{
+		Creator:   bob,
+		GameIndex: "1",
+	})
+	after := ctx.GasMeter().GasConsumed()
+	require.LessOrEqual(t, after, before-5_000)
+}

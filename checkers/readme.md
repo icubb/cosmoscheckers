@@ -5519,6 +5519,114 @@ To summarize, this section has explored:
 - How would you unit-test these new elements?
 - How would you use Ignite CLI to locally run a one-node blockchain and interact with it via the CLI to see what you get?
 
+**New Information**
+
+- To run a query to check the validity of a move you need to pass:
+    - The game ID: call the field `gameIndex`.
+    - The `player` color, as queries do not have a signer.
+    - The origin board position: `fromX` and `fromY`.
+    - The target board positions: `toX` and `toY`.
+
+- The information to be returned is:
+    - A boolean for whether the move is valid, called `possible`.
+    - A text which explains why the move is not valid, called `reason`.
+
+- As with other data structures, you can create the query message object with Ignite CLI:
+
+```
+ignite scaffold query canPlayMove gameIndex player fromX:uint fromY:uint toX:uint toY:uint \
+    --module checkers \
+    --response possible:bool, reason
+```
+
+- Among other files, you should now have this:
+
+```
+message QueryCanPlayMoveRequest {
+    string gameIndex = 1;
+    string player = 2;
+    uint64 fromX = 3;
+    uint64 fromY = 4;
+    uint64 toX = 5;
+    uint64 toY = 6;
+}
+
+message QueryCanPlayMoveResponse {
+    bool possible = 1;
+    string reason = 2;
+}
+```
+
+- Ignite CLI has created the following boilerplate for you:
+    - The Protobuf gRPC interface function (opens new window) to submit your new QueryCanPlayMoveRequest and its default implementation.
+    - The routing of this new query (opens new window) in the query facilities.
+    - An empty function (opens new window) ready to implement the action.
+
+
+**Query Handling** 
+
+- Now you need to implement the answer to the player's query in `grpc_query_can_play_move.go`. Differentiate between two types of errors:
+    - Errors relating to them move, returning a reason.
+    - Errors indicating that testing the move is impossible, returning an error.
+
+1. The game needs to be fetched. If it does not exist at all, you can return an error message because you did not test the move:
+
+```
+storedGame, found := k.GetStoredGame(ctx, req.GameIndex)
+if !found {
+    return nil, sdkerrors.Wrapf(types.ErrGameNotFound, "%s", req.GameIndex)
+}
+```
+
+2. Has the game already been won?
+
+```
+if storedGame.Winner != rules.PieceStrings[rules.NO_PLAYER] {
+    return &types.QueryCanPlayMoveResponse {
+        Possible: false,
+        Reason: types.ErrGameFinished.Error(),
+    }, nil
+}
+```
+
+3. Is the `player` given actually one of the game players?
+
+```
+isBlack := rules.PieceStrings[rules.BLACK_PLAYER] = req.Player
+isRed := rules.PieceStrings[rules.RED_PLAYER] = req.Player
+var player rules.Player
+if isBlack && isRed {
+    player = rules.StringPieces[storedGame.Turn].Player
+} else if isBlack {
+    player = rules.BLACK_PLAYER
+} else if isRed {
+    player = rules.RED_PLAYER
+} else {
+    return &types.QueryCanPlayMoveResponse {
+        Possible: false,
+        Reason: fmt.Sprintf("%s: %s", types.ErrCreatorNotPlayer.Error(), req.Player),
+    }, nil
+}
+```
+
+4. Is it 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

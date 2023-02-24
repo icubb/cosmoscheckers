@@ -5562,7 +5562,6 @@ message QueryCanPlayMoveResponse {
     - The routing of this new query (opens new window) in the query facilities.
     - An empty function (opens new window) ready to implement the action.
 
-
 **Query Handling** 
 
 - Now you need to implement the answer to the player's query in `grpc_query_can_play_move.go`. Differentiate between two types of errors:
@@ -5609,12 +5608,204 @@ if isBlack && isRed {
 }
 ```
 
-4. Is it 
+4. Is it the player's turn?
+Copy game, err := storedGame.ParseGame()
+if err != nil {
+    return nil, err
+}
+if !game.TurnIs(player) {
+    return &types.QueryCanPlayMoveResponse{
+        Possible: false,
+        Reason:   fmt.Sprintf("%s: %s", types.ErrNotPlayerTurn.Error(), player.Color),
+    }, nil
+}
+x checkers keeper grpc_query_can_play_move.go
+View source
+
+Attempt the move and report back:
+Copy _, moveErr := game.Move(
+    rules.Pos{
+        X: int(req.FromX),
+        Y: int(req.FromY),
+    },
+    rules.Pos{
+        X: int(req.ToX),
+        Y: int(req.ToY),
+    },
+)
+if moveErr != nil {
+    return &types.QueryCanPlayMoveResponse{
+        Possible: false,
+        Reason:   fmt.Sprintf("%s: %s", types.ErrWrongMove.Error(), moveErr.Error()),
+    }, nil
+}
+x checkers keeper grpc_query_can_play_move.go
+View source
+
+If all went well:
+
+    Copy return &types.QueryCanPlayMoveResponse{
+        Possible: true,
+        Reason:   "ok",
+    }, nil
+    x checkers keeper grpc_query_can_play_move.go
+    View source
+
+Quite straightforward.
+
+
+**Unit Tests** 
+
+- A query is evaluated in memory, while using the current state in a read-only mode. Thanks to this, you can take some liberties with teh current state before running a test, as long as reading hestate works as intedned. For example, you can pretend that the game has been progressed through a number of moves even though you have only just planted the board in that state in the keeper. For this reason, you can easily test the new meethod with unit tests, even though you painstakingly prepared integration tests.
+
+- Take inspiration from other tests on queries, which create an array of cases to test in a loop. Running a battery of test cases makes it easier to insrt new cases and surface any unintended impact. Create a new `grpc_query_can_play_move_test.go file where you.
+
+1. Declare a `struct` that describes a test case:
+
+```
+type canPlayGameCase struct {
+    desc string
+    game types.StoredGame
+    request *types.QueryCanPlayMoveRequest
+    response *types.QueryCanPlayMoveResponse
+    err string
+}
+```
+
+2. Create the common OK response, so as to reuse it:
+
+```
+var (
+    canPlayOkResponse = &types.QueryCanPlayMoveResponse{
+        Possible:   true,
+        Reason:     "ok",
+    }
+)
+```
+
+Create the common OK response, so as to reuse it:
+Copy var (
+    canPlayOkResponse = &types.QueryCanPlayMoveResponse{
+        Possible: true,
+        Reason:   "ok",
+    }
+)
+x checkers keeper grpc_query_can_play_move_test.go
+View source
+
+Prepare your array of cases:
+Copy canPlayTestRange = []canPlayGameCase{
+    // TODO
+}
+x checkers keeper grpc_query_can_play_move_test.go
+View source
+
+In the array add your first test case, one that returns an OK response:
+Copy {
+    desc: "First move by black",
+    game: types.StoredGame{
+        Index:  "1",
+        Board:  "*b*b*b*b|b*b*b*b*|*b*b*b*b|********|********|r*r*r*r*|*r*r*r*r|r*r*r*r*",
+        Turn:   "b",
+        Winner: "*",
+    },
+    request: &types.QueryCanPlayMoveRequest{
+        GameIndex: "1",
+        Player:    "b",
+        FromX:     1,
+        FromY:     2,
+        ToX:       2,
+        ToY:       3,
+    },
+    response: canPlayOkResponse,
+    err:      "nil",
+},
+x checkers keeper grpc_query_can_play_move_test.go
+View source
+
+Add other test cases (opens new window). Examples include a missing request:
+Copy {
+    desc: "Nil request, wrong",
+    game: types.StoredGame{
+        Index:  "1",
+        Board:  "*b*b*b*b|b*b*b*b*|*b*b*b*b|********|********|r*r*r*r*|*r*r*r*r|r*r*r*r*",
+        Turn:   "b",
+        Winner: "*",
+    },
+    request:  nil,
+    response: nil,
+    err:      "rpc error: code = InvalidArgument desc = invalid request",
+},
+x checkers keeper grpc_query_can_play_move_test.go
+View source
+
+Or a player playing out of turn:
+Copy {
+    desc: "First move by red, wrong",
+    game: types.StoredGame{
+        Index:  "1",
+        Board:  "*b*b*b*b|b*b*b*b*|*b*b*b*b|********|********|r*r*r*r*|*r*r*r*r|r*r*r*r*",
+        Turn:   "b",
+        Winner: "*",
+    },
+    request: &types.QueryCanPlayMoveRequest{
+        GameIndex: "1",
+        Player:    "r",
+        FromX:     1,
+        FromY:     2,
+        ToX:       2,
+        ToY:       3,
+    },
+    response: &types.QueryCanPlayMoveResponse{
+        Possible: false,
+        Reason:   "player tried to play out of turn: red",
+    },
+    err: "nil",
+},
+x checkers keeper grpc_query_can_play_move_test.go
+View source
+
+With the test cases defined, add a single test function that runs all the cases:
+
+    Copy func TestCanPlayCasesAsExpected(t *testing.T) {
+        keeper, ctx := keepertest.CheckersKeeper(t)
+        goCtx := sdk.WrapSDKContext(ctx)
+        for _, testCase := range canPlayTestRange {
+            t.Run(testCase.desc, func(t *testing.T) {
+                keeper.SetStoredGame(ctx, testCase.game)
+                response, err := keeper.CanPlayMove(goCtx, testCase.request)
+                if testCase.response == nil {
+                    require.Nil(t, response)
+                } else {
+                    require.EqualValues(t, testCase.response, response)
+                }
+                if testCase.err == "nil" {
+                    require.Nil(t, err)
+                } else {
+                    require.EqualError(t, err, testCase.err)
+                }
+                keeper.RemoveStoredGame(ctx, testCase.game.Index)
+            })
+        }
+    }
+    x checkers keeper grpc_query_can_play_move_test.go
+    View source
+
+Note how all test cases are run within a single unit test. In other words, the keeper used for the second case is the same as that used for the first case, and so on for all. So to mitigate the risk of interference from one case to the next, you ought to do keeper.RemoveStoredGame(ctx, testCase.game.Index) at the end of the test case.
+
+
+**Integration Tests**
+
+- You can also add integration test on top of your unit tests. Put them along side your other integration tests. Create `grpc_query_can_play_move_test.go`
+
+- Test if it is possible to play on the first game that is created in the system:
 
 
 
 
 
+
+https://tutorials.cosmos.network/hands-on-exercise/2-ignite-cli-adv/7-can-play.html#
 
 
 

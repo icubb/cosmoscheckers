@@ -55,6 +55,7 @@ export interface QueryCanPlayMoveRequest {
 
 export interface QueryCanPlayMoveResponse {
   possible: boolean;
+  reason: string;
 }
 
 const baseQueryParamsRequest: object = {};
@@ -768,7 +769,7 @@ export const QueryCanPlayMoveRequest = {
   },
 };
 
-const baseQueryCanPlayMoveResponse: object = { possible: false };
+const baseQueryCanPlayMoveResponse: object = { possible: false, reason: "" };
 
 export const QueryCanPlayMoveResponse = {
   encode(
@@ -777,6 +778,9 @@ export const QueryCanPlayMoveResponse = {
   ): Writer {
     if (message.possible === true) {
       writer.uint32(8).bool(message.possible);
+    }
+    if (message.reason !== "") {
+      writer.uint32(18).string(message.reason);
     }
     return writer;
   },
@@ -796,6 +800,9 @@ export const QueryCanPlayMoveResponse = {
         case 1:
           message.possible = reader.bool();
           break;
+        case 2:
+          message.reason = reader.string();
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -813,12 +820,18 @@ export const QueryCanPlayMoveResponse = {
     } else {
       message.possible = false;
     }
+    if (object.reason !== undefined && object.reason !== null) {
+      message.reason = String(object.reason);
+    } else {
+      message.reason = "";
+    }
     return message;
   },
 
   toJSON(message: QueryCanPlayMoveResponse): unknown {
     const obj: any = {};
     message.possible !== undefined && (obj.possible = message.possible);
+    message.reason !== undefined && (obj.reason = message.reason);
     return obj;
   },
 
@@ -832,6 +845,11 @@ export const QueryCanPlayMoveResponse = {
       message.possible = object.possible;
     } else {
       message.possible = false;
+    }
+    if (object.reason !== undefined && object.reason !== null) {
+      message.reason = object.reason;
+    } else {
+      message.reason = "";
     }
     return message;
   },

@@ -5417,36 +5417,44 @@ THe reason is that base app incurrs gas and your messages in your module also do
 
 - Here, you want to confirm that gas is consumed by different actions. The difficulty is that Alice's and Bob's balances in `stake` tokens change not only because of the gas used but also depending on the gas price. AN easy measurement is to use `--dry-run`:
 
+ract via the CLI
 
-`docker exec -it checkers checkersd create-game $alice $bob 1000000 --from $alice --dry-run`
+Here, you want to confirm that gas is consumed by different actions. The difficulty is that Alice's and Bob's balances in stake tokens change not only because of the gas used but also depending on the gas price. An easy measurement is to use --dry-run:
 
+Copy $ checkersd tx checkers create-game $alice $bob 1000000 --from $alice --dry-run
 
-- Say this returns `69422`, which is the estimated gas used. Now comment out the `.ConsumeGas` line in `msg_server_create_game.go`, save it, wait a few minutes for ignite CLI to rebuild, and try again:
+Say this returns 69422, which is the estimated gas used. Now comment out the .ConsumeGas line in msg_server_create_game.go, save it, wait a few minutes for Ignite CLI to rebuild, and try again:
 
-`docker exec -it checkers checkersd tx checkers create-game $alice $bob 1000000 --from $alice --dry-run`
+Copy $ checkersd tx checkers create-game $alice $bob 1000000 --from $alice --dry-run
 
-- Say, this time you get `54362`. THis is good the `15000 gas is no lnger part of the estimateion, as expected. Uncomment `.ConsumeGas` line. You can try `--dry-run` on play and reject too.
+Say, this time you get 54422. This is good: the 15000 gas is no longer part of the estimation, as expected. Uncomment the .ConsumeGas line. You can try --dry-run on play and reject too.
 
-- Estimating with `--dry-run` is a good start. Now have Alice create a game and check htegas used in the transaction
+Estimating with --dry-run is a good start. Now have Alice create a game and check the gas used in the transaction:
 
-`checkersd tx checkers create-game $alice $bob 1000000 --from $alice`
+Copy $ checkersd tx checkers create-game $alice $bob 1000000 --from $alice
 
-- This mentions:
+This mentions:
+Copy ...
+gas_used: "69422"
+...
 
-`gas_used: "69422"`
+You could impose a --gas-prices and then check balances, but this would obfuscate the gas consumption which is what you want to confirm.
 
+As before, comment the .ConsumeGas line msg_server_create_game.go and wait for Ignite CLI to rebuild. Then try again:
 
-- You could impose a `--gas-prices` and then check balances, but this would obfuscate the gas consumption which is what you want to confirm.
+Copy $ checkersd tx checkers create-game $alice $bob 1000000 --from $alice
 
-- As before, comment the `.ConsumeGas` line `msg_server_create_game.go` and wait for Ignite CLI to rebuild. Then try again:
+This mentions:
+Copy ...
+gas_used: "65540"
+...
 
-`checkersd tx checkers create-game $alice $bob 1000000 --from $alice`
+There is only a difference of 4000. The rest of the system likely had some under-the-hood initializations, such as Merkle tree creations, which may falsify the early results. Create 10 more games without .Consumeing gas and only look at the gas_used. It should stabilize at a certain value:
 
-- This mentions:
+Copy $ checkersd tx checkers create-game $alice $bob 1000000 --from $alice -y | grep gas_used
 
-```
-gas_used: "65507"
-```
+This mentions:
+Copy gas_used: "65507"
 
 Put back the .ConsumeGas line and rebuild. Then try again:
 
@@ -5474,75 +5482,72 @@ synopsis
 
 To summarize, this section has explored:
 
-    - How to add gas metering to your application so participants contribute toward the cost of the work being demanded of the network by gameplay, and add costs to discourage spam.
-    
-    - What new data constants need to be added, such as fees for creating games or playing moves, and gas consumption lines for handlers relating to these gameplay aspects.
-    
-    - Best practices for gas metering, including where not to call fixed gas costs and the implications of a user sending transactions without enough gas to process them.
-    
-    - What texts to add that confirm gas consumption, acknowledging the limitations on precision that the use of BaseApp and your module also imposes on understanding how much gas is used by various transactions.
-    
-    - How to interact via the CLI to confirm that gas is being consumed by different actions, acknowledging the additional complications arising from variable account balances and gas price.
+    How to add gas metering to your application so participants contribute toward the cost of the work being demanded of the network by gameplay, and add costs to discourage spam.
+    What new data constants need to be added, such as fees for creating games or playing moves, and gas consumption lines for handlers relating to these gameplay aspects.
+    Best practices for gas metering, including where not to call fixed gas costs and the implications of a user sending transactions without enough gas to process them.
+    What texts to add that confirm gas consumption, acknowledging the limitations on precision that the use of BaseApp and your module also imposes on understanding how much gas is used by various transactions.
+    How to interact via the CLI to confirm that gas is being consumed by different actions, acknowledging the additional complications arising from variable account balances and gas price.
 
 
-**Help Find a Correct Move** 
+Make sure you have everything you need before proceeding:
 
-- Make sure you have everything you need before proceeding:
-    - You understand the concepts of queries and Protobuf
-    - You have Go installed
-    - You have the checkers blockchain codebase up to gas metering. If not, follow the previous steps or check out the relevant version.
+    You understand the concepts of queries and Protobuf.
+    You have Go installed.
+    You have the checkers blockchain codebase up to gas metering. If not, follow the previous steps or check out the relevant version (opens new window).
 
-- In this section you will:
-    - Improve usability with queries
-    - Create a battery of unit and integration tests.
+In this section, you will:
 
-- A player sends a `MsgPlayMove` when making a move. This message can succed or fail for several reasons. One error situation is when the messag represents an invalid move. A GUI is the first place where a vasd move can be caught, but it is still possible that a GUI wrongly enforces the rules.
+    Improve usability with queries.
+    Create a battery of unit and integration tests.
 
-- Since sending transactions includes costs, how do you assist participants in making sure they at least do not make a wrong move?
+A player sends a MsgPlayMove when making a move. This message can succeed or fail for several reasons. One error situation is when the message represents an invalid move. A GUI is the first place where a bad move can be caught, but it is still possible that a GUI wrongly enforces the rules.
 
-- Players should be able to confirm that a move is valid before burning gas. To add this functionality, you need to create a way for the player to call the `Move` function withou changing the game's state. Use a query because they are evaluated in memory and do not commit anything permanently to storage.
+Since sending transactions includes costs, how do you assist participants in making sure they at least do not make a wrong move?
 
-**Some Initial Thoughts** 
+Players should be able to confirm that a move is valid before burning gas. To add this functionality, you need to create a way for the player to call the Move (opens new window) function without changing the game's state. Use a query because they are evaluated in memory and do not commit anything permanently to storage.
+#
+Some initial thoughts
 
-- When it comes to finding a correct move, ask:
-    - What structure will facilitate this check?
-    - Who do you let make such checks?
-    - What acceptable limitations do you have for this?
-    - Are there new errors to report back?
-    - What event shoukd you emit?
+When it comes to finding a correct move, ask:
 
-**Code needs** 
+    What structure will facilitate this check?
+    Who do you let make such checks?
+    What acceptable limitations do you have for this?
+    Are there new errors to report back?
+    What event should you emit?
 
-- What Ignite CLI commands, if any, will assist you?
-- How do you adjust what Ignite CLI created for you?
-- Where do you make your changes?
-- How would you unit-test these new elements?
-- How would you use Ignite CLI to locally run a one-node blockchain and interact with it via the CLI to see what you get?
+#
+Code needs
 
-**New Information**
+    What Ignite CLI commands, if any, will assist you?
+    How do you adjust what Ignite CLI created for you?
+    Where do you make your changes?
+    How would you unit-test these new elements?
+    How would you use Ignite CLI to locally run a one-node blockchain and interact with it via the CLI to see what you get?
 
-- To run a query to check the validity of a move you need to pass:
-    - The game ID: call the field `gameIndex`.
-    - The `player` color, as queries do not have a signer.
-    - The origin board position: `fromX` and `fromY`.
-    - The target board positions: `toX` and `toY`.
+#
+New information
 
-- The information to be returned is:
-    - A boolean for whether the move is valid, called `possible`.
-    - A text which explains why the move is not valid, called `reason`.
+To run a query to check the validity of a move you need to pass:
 
-- As with other data structures, you can create the query message object with Ignite CLI:
+    The game ID: call the field gameIndex.
+    The player color, as queries do not have a signer.
+    The origin board position: fromX and fromY.
+    The target board position: toX and toY.
 
-```
-ignite scaffold query canPlayMove gameIndex player fromX:uint fromY:uint toX:uint toY:uint \
+The information to be returned is:
+
+    A boolean for whether the move is valid, called possible.
+    A text which explains why the move is not valid, called reason.
+
+As with other data structures, you can create the query message object with Ignite CLI:
+
+Copy $ ignite scaffold query canPlayMove gameIndex player fromX:uint fromY:uint toX:uint toY:uint \
     --module checkers \
-    --response possible:bool, reason
-```
+    --response possible:bool,reason
 
-- Among other files, you should now have this:
-
-```
-message QueryCanPlayMoveRequest {
+Among other files, you should now have this:
+Copy message QueryCanPlayMoveRequest {
     string gameIndex = 1;
     string player = 2;
     uint64 fromX = 3;
@@ -5555,44 +5560,45 @@ message QueryCanPlayMoveResponse {
     bool possible = 1;
     string reason = 2;
 }
-```
+proto checkers query.proto
+View source
 
-- Ignite CLI has created the following boilerplate for you:
-    - The Protobuf gRPC interface function (opens new window) to submit your new QueryCanPlayMoveRequest and its default implementation.
-    - The routing of this new query (opens new window) in the query facilities.
-    - An empty function (opens new window) ready to implement the action.
+Ignite CLI has created the following boilerplate for you:
 
-**Query Handling** 
+    The Protobuf gRPC interface function (opens new window) to submit your new QueryCanPlayMoveRequest and its default implementation.
+    The routing of this new query (opens new window) in the query facilities.
+    An empty function (opens new window) ready to implement the action.
 
-- Now you need to implement the answer to the player's query in `grpc_query_can_play_move.go`. Differentiate between two types of errors:
-    - Errors relating to them move, returning a reason.
-    - Errors indicating that testing the move is impossible, returning an error.
+#
+Query handling
 
-1. The game needs to be fetched. If it does not exist at all, you can return an error message because you did not test the move:
+Now you need to implement the answer to the player's query in grpc_query_can_play_move.go. Differentiate between two types of errors:
 
-```
-storedGame, found := k.GetStoredGame(ctx, req.GameIndex)
+    Errors relating to the move, returning a reason.
+    Errors indicating that testing the move is impossible, returning an error.
+
+    The game needs to be fetched. If it does not exist at all, you can return an error message because you did not test the move:
+
+Copy storedGame, found := k.GetStoredGame(ctx, req.GameIndex)
 if !found {
     return nil, sdkerrors.Wrapf(types.ErrGameNotFound, "%s", req.GameIndex)
 }
-```
+x checkers keeper grpc_query_can_play_move.go
+View source
 
-2. Has the game already been won?
-
-```
-if storedGame.Winner != rules.PieceStrings[rules.NO_PLAYER] {
-    return &types.QueryCanPlayMoveResponse {
+Has the game already been won?
+Copy if storedGame.Winner != rules.PieceStrings[rules.NO_PLAYER] {
+    return &types.QueryCanPlayMoveResponse{
         Possible: false,
-        Reason: types.ErrGameFinished.Error(),
+        Reason:   types.ErrGameFinished.Error(),
     }, nil
 }
-```
+x checkers keeper grpc_query_can_play_move.go
+View source
 
-3. Is the `player` given actually one of the game players?
-
-```
-isBlack := rules.PieceStrings[rules.BLACK_PLAYER] = req.Player
-isRed := rules.PieceStrings[rules.RED_PLAYER] = req.Player
+Is the player given actually one of the game players?
+Copy isBlack := rules.PieceStrings[rules.BLACK_PLAYER] == req.Player
+isRed := rules.PieceStrings[rules.RED_PLAYER] == req.Player
 var player rules.Player
 if isBlack && isRed {
     player = rules.StringPieces[storedGame.Turn].Player
@@ -5601,14 +5607,15 @@ if isBlack && isRed {
 } else if isRed {
     player = rules.RED_PLAYER
 } else {
-    return &types.QueryCanPlayMoveResponse {
+    return &types.QueryCanPlayMoveResponse{
         Possible: false,
-        Reason: fmt.Sprintf("%s: %s", types.ErrCreatorNotPlayer.Error(), req.Player),
+        Reason:   fmt.Sprintf("%s: %s", types.ErrCreatorNotPlayer.Error(), req.Player),
     }, nil
 }
-```
+x checkers keeper grpc_query_can_play_move.go
+View source
 
-4. Is it the player's turn?
+Is it the player's turn?
 Copy game, err := storedGame.ParseGame()
 if err != nil {
     return nil, err
@@ -5652,36 +5659,24 @@ If all went well:
     View source
 
 Quite straightforward.
+#
+Unit tests
 
+A query is evaluated in memory, while using the current state in a read-only mode. Thanks to this, you can take some liberties with the current state before running a test, as long as reading the state works as intended. For example, you can pretend that the game has been progressed through a number of moves even though you have only just planted the board in that state in the keeper. For this reason, you can easily test the new method with unit tests, even though you painstakingly prepared integration tests.
 
-**Unit Tests** 
+Take inspiration from the other tests on queries (opens new window), which create an array of cases to test in a loop. Running a battery of test cases makes it easier to insert new cases and surface any unintended impact. Create a new grpc_query_can_play_move_test.go file where you:
 
-- A query is evaluated in memory, while using the current state in a read-only mode. Thanks to this, you can take some liberties with teh current state before running a test, as long as reading hestate works as intedned. For example, you can pretend that the game has been progressed through a number of moves even though you have only just planted the board in that state in the keeper. For this reason, you can easily test the new meethod with unit tests, even though you painstakingly prepared integration tests.
+    Declare a struct that describes a test case:
 
-- Take inspiration from other tests on queries, which create an array of cases to test in a loop. Running a battery of test cases makes it easier to insrt new cases and surface any unintended impact. Create a new `grpc_query_can_play_move_test.go file where you.
-
-1. Declare a `struct` that describes a test case:
-
-```
-type canPlayGameCase struct {
-    desc string
-    game types.StoredGame
-    request *types.QueryCanPlayMoveRequest
+Copy type canPlayGameCase struct {
+    desc     string
+    game     types.StoredGame
+    request  *types.QueryCanPlayMoveRequest
     response *types.QueryCanPlayMoveResponse
-    err string
+    err      string
 }
-```
-
-2. Create the common OK response, so as to reuse it:
-
-```
-var (
-    canPlayOkResponse = &types.QueryCanPlayMoveResponse{
-        Possible:   true,
-        Reason:     "ok",
-    }
-)
-```
+x checkers keeper grpc_query_can_play_move_test.go
+View source
 
 Create the common OK response, so as to reuse it:
 Copy var (
@@ -5792,70 +5787,40 @@ With the test cases defined, add a single test function that runs all the cases:
     View source
 
 Note how all test cases are run within a single unit test. In other words, the keeper used for the second case is the same as that used for the first case, and so on for all. So to mitigate the risk of interference from one case to the next, you ought to do keeper.RemoveStoredGame(ctx, testCase.game.Index) at the end of the test case.
+#
+Integration tests
+
+You can also add integration tests on top of your unit tests. Put them alongside your other integration tests. Create grpc_query_can_play_move_test.go.
+
+Test if it is possible to play on the first game that is created in the system:
+Copy func (suite *IntegrationTestSuite) TestCanPlayAfterCreate() {
+    suite.setupSuiteWithOneGameForPlayMove()
+    goCtx := sdk.WrapSDKContext(suite.ctx)
+    response, err := suite.queryClient.CanPlayMove(goCtx, &types.QueryCanPlayMoveRequest{
+        GameIndex: "1",
+        Player:    "b",
+        FromX:     1,
+        FromY:     2,
+        ToX:       2,
+        ToY:       3,
+    })
+    suite.Require().Nil(err)
+    suite.Require().EqualValues(canPlayOkResponse, response)
+}
+tests integration ... keeper grpc_query_can_play_move_test.go
+View source
+
+With these, your query handling function should be covered.
 
 
-**Integration Tests**
+```
+Making it easier to update messages 
 
-- You can also add integration test on top of your unit tests. Put them along side your other integration tests. Create `grpc_query_can_play_move_test.go`
-
-- Test if it is possible to play on the first game that is created in the system:
-
-
-
+- This is an issue i had where i had --response var:bool,reason
+and reason was not getting generated with ignite scaffold query 
+the fix to this was just to change the query.proto file adding the extra field into the response message and then doing `ignite g proto-go` wich regenerates the files and fills in the other gaps. 
 
 
-
-https://tutorials.cosmos.network/hands-on-exercise/2-ignite-cli-adv/7-can-play.html#
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-https://tutorials.cosmos.network/hands-on-exercise/2-ignite-cli-adv/7-can-play.html
-
-
-�🙂 Created account "alice" with address "cosmos1pjsqwjm34hrf2ykp3qscv0phxsrhkv50q0a8fl" 
-th mnemonic: "ivory shed orange buzz jungle typical winner during dumb alert spy mechanic 
-rate share display turkey stuff price turkey vague office empower practice trash"
-�🙂 Created account "bob" with address "cosmos14hve480dk6ec48vjh3fycjksfnnn3asxweeqs3" wi
- mnemonic: "odor empty spider powder mention region noise allow soccer city develop warrior pledge recycle earn mass one key few truth medal spring tomato easy"
 
 
 

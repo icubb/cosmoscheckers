@@ -2,9 +2,12 @@ package keeper
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/alice/checkers/rules"
 	"github.com/alice/checkers/x/checkers/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -40,8 +43,8 @@ func (k Keeper) CanPlayMove(goCtx context.Context, req *types.QueryCanPlayMoveRe
 
 	// Is the player actually one of the game players?
 
-	isBlack := rules.PieceStrings[rules.BLACK_PLAYER] = req.Player
-	isRed := rules.PieceStrings[rules.RED_PLAYER] = req.Player
+	isBlack := rules.PieceStrings[rules.BLACK_PLAYER] == req.Player
+	isRed := rules.PieceStrings[rules.RED_PLAYER] == req.Player
 	var player rules.Player
 	if isBlack && isRed {
 		player = rules.StringPieces[storedGame.Turn].Player
@@ -50,9 +53,9 @@ func (k Keeper) CanPlayMove(goCtx context.Context, req *types.QueryCanPlayMoveRe
 	} else if isRed {
 		player = rules.RED_PLAYER
 	} else {
-		return &types.QueryCanPlayMoveResponse {
+		return &types.QueryCanPlayMoveResponse{
 			Possible: false,
-			Reason: fmt.Sprintf("%s: %s", types.ErrCreatorNotPlayer.Error(), req.Player),
+			Reason:   fmt.Sprintf("%s: %s", types.ErrCreatorNotPlayer.Error(), req.Player),
 		}, nil
 	}
 
@@ -63,9 +66,9 @@ func (k Keeper) CanPlayMove(goCtx context.Context, req *types.QueryCanPlayMoveRe
 		return nil, err
 	}
 	if !game.TurnIs(player) {
-		return &types.QueryCanPlayMoveResponse {
+		return &types.QueryCanPlayMoveResponse{
 			Possible: false,
-			Reason: fmt.Sprintf("%s: %s", types.ErrNotPlayerTurn.Error(), player.Color),
+			Reason:   fmt.Sprintf("%s: %s", types.ErrNotPlayerTurn.Error(), player.Color),
 		}, nil
 	}
 
@@ -84,15 +87,14 @@ func (k Keeper) CanPlayMove(goCtx context.Context, req *types.QueryCanPlayMoveRe
 	if moveErr != nil {
 		return &types.QueryCanPlayMoveResponse{
 			Possible: false,
-			Reason: fmt.Sprintf("%s: %s", types.ErrWrongMove.Error(), moveErr.Error()),
+			Reason:   fmt.Sprintf("%s: %s", types.ErrWrongMove.Error(), moveErr.Error()),
 		}, nil
 	}
 
-	return &types.QueryCanPlayMoveResponse {
+	return &types.QueryCanPlayMoveResponse{
 		Possible: true,
-		Reason: "ok",
+		Reason:   "ok",
 	}, nil
-
 
 	//return &types.QueryCanPlayMoveResponse{}, nil
 }

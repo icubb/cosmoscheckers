@@ -16,6 +16,8 @@ paths:
             properties:
               possible:
                 type: boolean
+              reason:
+                type: string
         default:
           description: An unexpected error response.
           schema:
@@ -30940,6 +30942,8 @@ definitions:
     properties:
       possible:
         type: boolean
+      reason:
+        type: string
   alice.checkers.checkers.QueryGetStoredGameResponse:
     type: object
     properties:

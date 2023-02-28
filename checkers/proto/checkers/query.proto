@@ -83,6 +83,7 @@ message QueryCanPlayMoveRequest {
 
 message QueryCanPlayMoveResponse {
   bool possible = 1;
+  string reason = 2;
 }
 
 // this line is used by starport scaffolding # 3

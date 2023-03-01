@@ -5489,7 +5489,8 @@ To summarize, this section has explored:
     How to interact via the CLI to confirm that gas is being consumed by different actions, acknowledging the additional complications arising from variable account balances and gas price.
 
 
-
+alice - cosmos1j6tweav6y907kkt779rf3hxawm2yu2g6saf4
+bob - cosmos12qvettzk5rzqr8nyk2msdar9p4tazlsw4knk
 
 
 

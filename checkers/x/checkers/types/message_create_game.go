@@ -15,6 +15,7 @@ func NewMsgCreateGame(creator string, black string, red string, wager uint64) *M
 		Black:   black,
 		Red:     red,
 		Wager:   wager,
+		Denom:   denom,
 	}
 }
 

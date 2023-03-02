@@ -5489,8 +5489,189 @@ To summarize, this section has explored:
     How to interact via the CLI to confirm that gas is being consumed by different actions, acknowledging the additional complications arising from variable account balances and gas price.
 
 
-alice - cosmos1j6tweav6y907kkt779rf3hxawm2yu2g6saf4
-bob - cosmos12qvettzk5rzqr8nyk2msdar9p4tazlsw4knk
+alice
+cosmos1j6tweav6y907kkt779rf3hxawm2yn2u2g6saf4
+bob
+cosmos12qvettzk5rzqr8nyk2msdar9p4tazlh9sw4knk
+
+**Synopsis**
+
+- To summarize, this section has explored.
+
+- How application usability can be improved with queries, such as by avoiding the cost of sending *technically* valid transactions which will nevertheless inevitably be rejected due to the application's current state. 
+
+- How queries allow the user to evaluate the application state in read-only mode, without committing anything permanently to storage, with the result that a planned transaction can be judged as acceptable or not before burning gas.
+
+- How effective query construction will allow the application to signal not just that a planned transcation will fail but also the reason it will fail, improving the users knowledge base for future actions. 
+
+
+**Play with Cross Chain Tokens** 
+
+- In this section, you will:
+    - Discover the Inter-Blockchain Communication Protocol
+    - Accept Wagers with tokens from other chains.
+    - Refactor integration tests.
+
+
+- When you **introduced a wager** you enabled players to play a game and bet on the outcome using the base staking token of your blockchain. What if your players want to play with *other* currencies? Your blockchain can represent a token from any other connected blockchain by using the Inter-Blockchain Communication Protocol (IBC)
+
+- Thus, you could expand the pool of your potential players by extending the pool of possible wager denominations via the use of IBC. How can you do this?
+
+- Your checkers application will be agnostic regarding tokens and relayers. Your only task is to enable the use of *foreign* tokens.
+
+**Some Initial Thoughts** 
+
+- Before diving into the exercise, ask yourself:
+    - What new information do you need?
+    - How do you sanitize the inputs?
+    - Are there new errors to report back?
+    - What event should you emit?
+
+**Code Needs** 
+
+- When it comes to the code itself:
+    - What ignite CLI commands, if any, assist you?
+    - How do you adjust what Ignite CLI created for you?
+    - How would you unit-test these new elements?
+    - How would you use Ignite CLI to locally run a one-node blockchain and interact with it via the CLI to see what you get? 
+
+**New Information** 
+
+- Instead of defaulting to `"stake"`, let players decide what string represents thier token:
+    1. Update the stored game:
+        ```
+        message StoredGame {
+            ...
+            string denom = 12;
+        }
+        ```
+    2. Update the message to create a game:
+        ```
+        message MsgCreateGame {
+            ...
+            string denom = 5;
+        }
+        ```
+    3. Instruct the Ignite CLI and Protobuf to recompile both files:
+        
+        `ignite generate proto-go`
+    
+    4. It is recommended to also update the `MsgCreateGame` constructor:
+
+    ```
+    func NewMsgCreateGame(creator string, black string, red string, wager uint64, denom string) *MsgCreateGame {
+        return &MsgCreateGame {
+            ...
+            Denom: denom,
+        }
+    }
+    ```
+
+Not to forget the CLI client:
+Copy     func CmdCreateGame() *cobra.Command {
+        cmd := &cobra.Command{
+-          Use:   "create-game [black] [red] [wager]",
++          Use:   "create-game [black] [red] [wager] [denom]",
+            Short: "Broadcast message createGame",
+-          Args:  cobra.ExactArgs(3),
++          Args:  cobra.ExactArgs(4),
+            RunE: func(cmd *cobra.Command, args []string) (err error) {
+                argBlack := args[0]
+                argRed := args[1]
+                argWager, err := strconv.ParseUint(args[2], 10, 64)
+                if err != nil {
+                    return err
+                }
++              argDenom := args[3]
+
+                clientCtx, err := client.GetClientTxContext(cmd)
+                if err != nil {
+                    return err
+                }
+                msg := types.NewMsgCreateGame(
+                    clientCtx.GetFromAddress().String(),
+                    argBlack,
+                    argRed,
+                    argWager,
++                  argDenom,
+                )
+                if err := msg.ValidateBasic(); err != nil {
+                    return err
+                }
+                return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+            },
+        }
+        flags.AddTxFlagsToCmd(cmd)
+        return cmd
+    }
+View source
+
+This new field will be emitted during game creation, so add a new event key as a constant:
+Copy     const (
+        ...
++      GameCreatedEventDenom = "denom"
+    )
+x checkers types keys.go 
+
+- Should check that the denom is the same but also go to the chain in the same fashion.
+
+**Additional Handling** 
+
+- The Token denomination has been integrated into the relevant data structures. Now the proper denomination values need to be inserted in the right instances at the right locations:
+    1. In the helper function to create the `Coin` in `full_game.go`:
+
+    ```
+    func (storedGame *StoredGame) GetWagerCoin() (wager sdk.Coin) {
+        return sdk.NewCoin(storedGame.Denom, sdk.NewInt(int64(storedGame.Wager)))
+    }
+    ```
+
+    2. In the handler that instansiates a game:
+
+    ```
+    storedGame := types.StoredGame {
+        ...
+        Denom:      msg.Denom,
+    }
+    ```
+
+    - Also where it emits an event:
+
+    ```
+    ctx.EventManager().EmitEvent(
+        sdk.NewEvent(sdk.EventTypeMessage,
+            ...
+            sdk.NewAttribute(types.GameCreatedEventDenom, msg.Denom),
+        )
+    )
+    ```
+
+**Unit Tests** 
+
+    - The point of the tests is to make sure that the token denomination is correctly used. SO you ought to add a denomination when creating a game and add it to all the stored games you check and all the emitted events you check. Choose a `"stake"` for all first games and something else for additional games, for instance `"coin"` and `"gold"` respectively. 
+
+    - Adjust your test helpers too:
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

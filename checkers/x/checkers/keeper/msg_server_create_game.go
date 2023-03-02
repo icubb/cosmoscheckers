@@ -36,6 +36,7 @@ func (k msgServer) CreateGame(goCtx context.Context, msg *types.MsgCreateGame) (
 		Deadline:    types.FormatDeadline(types.GetNextDeadline(ctx)),
 		Winner:      rules.PieceStrings[rules.NO_PLAYER],
 		Wager:       msg.Wager,
+		Denom:       msg.Denom,
 	}
 
 	// Confirm that the values in the object are correct by checking the validity of the players
@@ -70,6 +71,7 @@ func (k msgServer) CreateGame(goCtx context.Context, msg *types.MsgCreateGame) (
 			sdk.NewAttribute(types.GameCreatedEventBlack, msg.Black),
 			sdk.NewAttribute(types.GameCreatedEventRed, msg.Red),
 			sdk.NewAttribute(types.GameCreatedEventWager, strconv.FormatUint(msg.Wager, 10)),
+			sdk.NewAtrribute(types.GameCreatedEventDenom, msg.Denom),
 		),
 	)
 	// Return the newley creatd id for reference.

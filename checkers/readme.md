@@ -5650,15 +5650,32 @@ x checkers types keys.go
 
     - The point of the tests is to make sure that the token denomination is correctly used. SO you ought to add a denomination when creating a game and add it to all the stored games you check and all the emitted events you check. Choose a `"stake"` for all first games and something else for additional games, for instance `"coin"` and `"gold"` respectively. 
 
-    - Adjust your test helpers too:
+    - Adjust your test helpers too
 
-    
+    - The coins factory now needs to care about the denomination too:
+
+    ```
+    func coinsOf(amount uint64, denom string) sdk.Coins {
+        return sdk.Coins {
+            sdk.Coins {
+                Denom: denom,
+                Amount: sdk.NewInt(int64(amount)),
+            },
+        }
+    }
+    ```
+
+    - To minimize the amount of work to redo, add an `ExpectPayWithDenom` helper, and have the earlier 
+    `ExpectPay` use it with the `"stake"` denomination:
+
+    **I
 
 
 
 
 
 
+https://tutorials.cosmos.network/hands-on-exercise/2-ignite-cli-adv/8-wager-denom.html#unit-tests
 
 
 

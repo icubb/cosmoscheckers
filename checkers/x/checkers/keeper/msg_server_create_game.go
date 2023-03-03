@@ -71,7 +71,7 @@ func (k msgServer) CreateGame(goCtx context.Context, msg *types.MsgCreateGame) (
 			sdk.NewAttribute(types.GameCreatedEventBlack, msg.Black),
 			sdk.NewAttribute(types.GameCreatedEventRed, msg.Red),
 			sdk.NewAttribute(types.GameCreatedEventWager, strconv.FormatUint(msg.Wager, 10)),
-			sdk.NewAtrribute(types.GameCreatedEventDenom, msg.Denom),
+			sdk.NewAttribute(types.GameCreatedEventDenom, msg.Denom),
 		),
 	)
 	// Return the newley creatd id for reference.
